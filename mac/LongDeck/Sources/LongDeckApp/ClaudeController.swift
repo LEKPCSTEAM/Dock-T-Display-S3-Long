@@ -124,10 +124,7 @@ final class ClaudeController: ObservableObject {
         }
         actionRequests.insert(req.request)
         if let pane { busyPanes.insert(pane) }
-        let target = session.map {
-            ClaudeTarget(pane: $0.pane, pendingRequest: $0.pending?.request, toolName: $0.pending?.toolName,
-                         toolInputJSON: $0.pending?.toolInputJSON, cwd: $0.cwd)
-        }
+        let target = store.target(session: req.session)
         let responder = responder
         Task { @MainActor [weak self] in
             let ack = await Task.detached { responder.handle(req, target: target) }.value
@@ -204,9 +201,10 @@ final class ClaudeController: ObservableObject {
         for (session, pending) in store.pendingPrompts() {
             guard let pane = session.pane, !busyPanes.contains(pane), inFlight.insert(pending.request).inserted else { continue }
             let (sessionId, request) = (session.id, pending.request)
+            guard let target = store.target(session: sessionId) else { inFlight.remove(request); continue }
             let responder = responder
             Task { @MainActor [weak self] in
-                let visible = await Task.detached { responder.promptVisible(pane: pane) }.value
+                let visible = await Task.detached { responder.promptVisible(pane: pane, target: target) }.value
                 guard let self else { return }
                 inFlight.remove(request)
                 store.promptCheck(session: sessionId, request: request, visible: visible, now: monotonic)
