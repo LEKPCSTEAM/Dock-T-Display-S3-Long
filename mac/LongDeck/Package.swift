@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.macOS(.v14)],
     targets: [
         .target(name: "LongDeckCore"),
-        .executableTarget(name: "LongDeckApp", dependencies: ["LongDeckCore"]),
+        .executableTarget(name: "LongDeckApp", dependencies: ["LongDeckCore"],
+                          swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "LongDeckCoreTests", dependencies: ["LongDeckCore"]),
     ]
 )
