@@ -24,6 +24,7 @@ public extension VolumeControl {
 @MainActor public final class CoreAudioVolume: VolumeControl {
     public var onChange: (() -> Void)?
 
+    // 'vmvc' = VirtualMainVolume
     private static let volumeSelector = AudioObjectPropertySelector(0x766D7663)
     private var started = false
     private var listenedDevice = AudioObjectID(kAudioObjectUnknown)
@@ -87,11 +88,15 @@ public extension VolumeControl {
     public func read() -> VolumeState {
         guard let device = Self.defaultDevice(), settable(device, Self.volumeSelector) else { return .unavailable }
         var scalar = Float32(0)
-        guard get(device, Self.volumeSelector, &scalar) else { return .unavailable }
+        guard get(device, Self.volumeSelector, &scalar), let level = Self.percent(scalar) else { return .unavailable }
         var mute = UInt32(0)
         let muted = settable(device, kAudioDevicePropertyMute)
             && get(device, kAudioDevicePropertyMute, &mute) && mute != 0
-        return VolumeState(level: Int((scalar * 100).rounded()), muted: muted, available: true)
+        return VolumeState(level: level, muted: muted, available: true)
+    }
+
+    static func percent(_ scalar: Float32) -> Int? {
+        scalar.isFinite ? Int((scalar * 100).rounded()) : nil
     }
 
     public func setLevel(_ level: Int) throws {

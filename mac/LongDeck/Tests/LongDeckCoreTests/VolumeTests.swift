@@ -60,6 +60,13 @@ struct VolumeTests {
         #expect(throws: VolumeError.unavailable) { try fake.setLevelUnmuting(50) }
     }
 
+    @Test func percentRejectsNonFinite() {
+        #expect(CoreAudioVolume.percent(0.444) == 44)
+        #expect(CoreAudioVolume.percent(.nan) == nil)
+        #expect(CoreAudioVolume.percent(.infinity) == nil)
+        #expect(CoreAudioVolume.percent(-.infinity) == nil)
+    }
+
     @Test func coreAudioReadsDefaultOutput() {
         let volume = CoreAudioVolume()
         let state = volume.read()

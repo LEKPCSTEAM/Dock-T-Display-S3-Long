@@ -70,9 +70,11 @@ final class AppModel: ObservableObject {
 
     private func startStatsTimer() {
         guard statsTimer == nil else { return }
-        statsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.sendStatsTick() }
         }
+        RunLoop.main.add(timer, forMode: .common)
+        statsTimer = timer
     }
 
     private func stopStatsTimer() {
