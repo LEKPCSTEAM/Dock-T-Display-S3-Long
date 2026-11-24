@@ -42,11 +42,12 @@ static void unlock()
     if (s_mutex) xSemaphoreGive(s_mutex);
 }
 
-static void copy_str(Preferences &from, Preferences &to, const char *key)
+static bool copy_str(Preferences &from, Preferences &to, const char *key)
 {
-    if (!from.isKey(key)) return;
+    if (!from.isKey(key)) return true;
     String v = from.getString(key, "");
-    to.putString(key, v);
+    if (v.length() == 0) return true;
+    return to.putString(key, v) == v.length();
 }
 
 static void migrate_old_namespace()
@@ -63,16 +64,21 @@ static void migrate_old_namespace()
         return;
     }
     if (src.isKey("ssid") || src.isKey("bright")) {
-        if (src.isKey("bright")) dst.putUChar("bright", src.getUChar("bright", 200));
-        if (src.isKey("night")) dst.putBool("night", src.getBool("night", true));
-        if (src.isKey("theme")) dst.putUChar("theme", src.getUChar("theme", THEME_DAY_COLOR));
-        if (src.isKey("lat")) dst.putFloat("lat", src.getFloat("lat", 13.7563f));
-        if (src.isKey("lon")) dst.putFloat("lon", src.getFloat("lon", 100.5018f));
-        copy_str(src, dst, "city");
-        copy_str(src, dst, "ssid");
-        copy_str(src, dst, "pass");
-        src.clear();
-        Serial.println("[settings] migrated legacy NVS namespace");
+        bool ok = true;
+        if (src.isKey("bright")) ok &= dst.putUChar("bright", src.getUChar("bright", 200)) > 0;
+        if (src.isKey("night")) ok &= dst.putBool("night", src.getBool("night", true)) > 0;
+        if (src.isKey("theme")) ok &= dst.putUChar("theme", src.getUChar("theme", THEME_DAY_COLOR)) > 0;
+        if (src.isKey("lat")) ok &= dst.putFloat("lat", src.getFloat("lat", 13.7563f)) > 0;
+        if (src.isKey("lon")) ok &= dst.putFloat("lon", src.getFloat("lon", 100.5018f)) > 0;
+        ok &= copy_str(src, dst, "city");
+        ok &= copy_str(src, dst, "pass");
+        ok &= copy_str(src, dst, "ssid");
+        if (ok) {
+            src.clear();
+            Serial.println("[settings] migrated legacy NVS namespace");
+        } else {
+            Serial.println("[settings] migration failed, keeping old namespace");
+        }
     }
     src.end();
     dst.end();
