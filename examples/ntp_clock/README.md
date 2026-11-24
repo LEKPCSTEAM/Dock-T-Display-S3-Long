@@ -45,6 +45,24 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 
 หน้า deck ใส่ live widget ได้ 3 แบบ: `stat` (CPU / RAM / GPU / temp / net / disk / battery แบบ bar, number หรือ sparkline), `volume` (slider + ปุ่ม mute) และ `clock` ค่า stat ส่งมาจากแอป Mac ทุกวินาที ถ้า Mac offline ทุก stat และ volume จะแสดง `--` ส่วน clock เดินต่อด้วยเวลาของบอร์ดเอง (`--:--` ถ้ายังไม่ sync NTP) ลาก slider เพื่อปรับ volume ของ Mac (ลากบน slider จะไม่เปลี่ยนหน้า) แตะไอคอนลำโพงเพื่อ mute / unmute ใน cell 1x1 หน่วย rate จะย่อเหลือตัวอักษรเดียว (เช่น `123M`) และ volume ที่ใช้ไม่ได้แสดง `n/a` รูปแบบ config ดู `mac/LongDeck/README.md`
 
+### Claude Code
+
+ต้อง Install integration จากเมนูแอป Mac ก่อน (ดู `mac/LongDeck/README.md`) แล้วหน้า `Claude` จะมี 2 widget
+
+- `claude_sessions` — แถวละ session: จุดสี accent = working, เหลือง = รอ permission, เขียว = waiting (เสร็จแล้วรอ prompt), เทา = อื่น ๆ ถ้าเกินจำนวนแถวจะขึ้น `+N more`
+- `claude_usage` — 5h / 7d เป็น % พร้อม countdown reset: bar สี accent ปกติ, เหลืองเมื่อ ≥ 80%, แดงเมื่อ ≥ 95%
+- Mac offline หรือยังไม่ Install: ทั้งสอง widget แสดง `--`
+
+แตะแถว session = focus หน้าต่าง iTerm2/tmux ของ session นั้น, กดค้างแถวที่กำลัง working = interrupt (Escape ส่งเฉพาะตอนจอ Claude Code ขึ้น `esc to interrupt`)
+
+เมื่อ Claude ขอ permission จะมี overlay ขึ้นทับ**ทุกหน้า** (รวมหน้านาฬิกา) พร้อมจอกะพริบ มีปุ่ม Approve / Always / Deny / Open และ ✕ (ซ่อนจนกว่าจะมี prompt ใหม่; overlay ไม่รับ tap 600 ms แรก) Deny = "No" แล้ว Claude หยุดรอ
+
+แอป Mac จะตอบแทนบอร์ดเฉพาะเมื่อ verify dialog ใน tmux ได้ตรงทุกจุด ถ้าไม่ได้บอร์ดจะขึ้น toast "Answer at the keyboard" และไม่พิมพ์อะไรลง pane
+
+- รองรับเฉพาะ prompt ของ Bash / Edit / MultiEdit / Write / Read
+- Always มีเฉพาะ Bash ที่เป็นบรรทัดเดียว ไม่เกิน 55 bytes ไม่มี shell operator และ rule ที่ Claude Code จะบันทึกต้องเท่ากับคำสั่งทั้งบรรทัด — Edit/Write/Read ไม่ส่ง Always จากบอร์ด
+- คำสั่งยาวที่ wrap หลายบรรทัดมักถูกปฏิเสธ ให้ตอบที่คีย์บอร์ด
+
 ยกเลิกการจับคู่ Mac: กดปุ่ม forget ในเว็บตั้งค่า หรือ
 
 ```bash
