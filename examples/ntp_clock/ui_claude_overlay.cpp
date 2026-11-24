@@ -47,7 +47,7 @@ static void set_sendable(bool enabled)
 
 static void hide_root()
 {
-    if (root) {
+    if (root && !lv_obj_has_flag(root, LV_OBJ_FLAG_HIDDEN)) {
         lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -116,7 +116,10 @@ static void overlay_create(const UiTick *t)
     lbl_project = ui_label(row, &ui_font_th_22, COLOR_TEXT, "");
     lv_label_set_long_mode(lbl_project, LV_LABEL_LONG_DOT);
     lv_obj_set_style_max_width(lbl_project, 300, 0);
+    lv_obj_set_height(lbl_project, 33);
     lbl_tool = ui_label(row, &ui_font_th_22, t->accent, "");
+    lv_label_set_long_mode(lbl_tool, LV_LABEL_LONG_DOT);
+    lv_obj_set_size(lbl_tool, 120, 33);
 
     btn_close = lv_btn_create(root);
     lv_obj_set_size(btn_close, 44, 36);
@@ -129,11 +132,13 @@ static void overlay_create(const UiTick *t)
     lv_obj_add_event_cb(btn_close, close_cb, LV_EVENT_SHORT_CLICKED, NULL);
 
     lbl_pending = ui_label(root, &ui_font_th_16, COLOR_TEXT_DIM, "");
+    lv_obj_set_width(lbl_pending, 60);
+    lv_obj_set_style_text_align(lbl_pending, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_align_to(lbl_pending, btn_close, LV_ALIGN_OUT_LEFT_MID, -16, 0);
 
     lbl_summary = ui_label(root, &ui_font_th_22, COLOR_TEXT, "");
     lv_label_set_long_mode(lbl_summary, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(lbl_summary, 624);
+    lv_obj_set_size(lbl_summary, 624, 33);
     lv_obj_set_pos(lbl_summary, 8, 48);
 
     btn[B_APPROVE] = make_button(B_APPROVE, "Approve", COLOR_OK, COLOR_BG);
@@ -152,16 +157,14 @@ static void show_prompt(const UiTick *t, const DeckClaudePrompt *p)
     if (!root) {
         overlay_create(t);
     }
-    bool is_new = !deck_claude_prompt_same(&shown, p);
-    shown       = *p;
+    bool is_new          = !deck_claude_prompt_same(&shown, p);
+    bool pending_changed = is_new || p->pending != shown.pending;
+    shown                = *p;
     if (is_new) {
-        char buf[16];
         lv_label_set_text(lbl_project, p->project);
         lv_label_set_text(lbl_tool, p->tool);
         lv_obj_set_style_text_color(lbl_tool, t->accent, 0);
         lv_label_set_text(lbl_summary, p->summary);
-        snprintf(buf, sizeof(buf), "+%u", (unsigned)(p->pending - 1));
-        lv_label_set_text(lbl_pending, buf);
         for (int i = 0; i < B_COUNT; i++) {
             if (p->tmux) {
                 lv_obj_clear_flag(btn[i], LV_OBJ_FLAG_HIDDEN);
@@ -179,12 +182,22 @@ static void show_prompt(const UiTick *t, const DeckClaudePrompt *p)
         lv_obj_move_foreground(root);
         ui_flash_screen(COLOR_WARN);
     }
-    if (p->pending > 1) {
-        lv_obj_clear_flag(lbl_pending, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(lbl_pending, LV_OBJ_FLAG_HIDDEN);
+    if (pending_changed) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "+%u", (unsigned)(p->pending - 1));
+        lv_label_set_text(lbl_pending, buf);
     }
-    lv_obj_clear_flag(root, LV_OBJ_FLAG_HIDDEN);
+    bool want_pending = p->pending > 1;
+    if (want_pending == lv_obj_has_flag(lbl_pending, LV_OBJ_FLAG_HIDDEN)) {
+        if (want_pending) {
+            lv_obj_clear_flag(lbl_pending, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(lbl_pending, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (lv_obj_has_flag(root, LV_OBJ_FLAG_HIDDEN)) {
+        lv_obj_clear_flag(root, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void ui_claude_overlay_update(const UiTick *t)
@@ -199,6 +212,19 @@ void ui_claude_overlay_update(const UiTick *t)
         set_sendable(true);
     }
 
+    if (cl_valid && cl.prompt.present) {
+        if (!deck_claude_prompt_same(&hidden_for, &cl.prompt)) {
+            show_prompt(t, &cl.prompt);
+        } else {
+            hide_root();
+        }
+    } else {
+        memset(&shown, 0, sizeof(shown));
+        memset(&hidden_for, 0, sizeof(hidden_for));
+        hide_root();
+    }
+
+    // After show_prompt so a same-tick toast stays above the overlay.
     DeckClaudeAck ack;
     if (deck_net_take_claude_ack(&ack) && !ack.ok) {
         ui_toast(KEYBOARD_MSG);
@@ -206,15 +232,4 @@ void ui_claude_overlay_update(const UiTick *t)
             set_sendable(true);
         }
     }
-
-    if (cl_valid && cl.prompt.present) {
-        if (!deck_claude_prompt_same(&hidden_for, &cl.prompt)) {
-            show_prompt(t, &cl.prompt);
-            return;
-        }
-        return hide_root();
-    }
-    memset(&shown, 0, sizeof(shown));
-    memset(&hidden_for, 0, sizeof(hidden_for));
-    hide_root();
 }
