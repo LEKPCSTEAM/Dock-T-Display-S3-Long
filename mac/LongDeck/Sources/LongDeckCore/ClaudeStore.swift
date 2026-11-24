@@ -6,7 +6,7 @@ public struct ClaudePending: Equatable, Sendable {
     public var request: String
     public var toolName: String
     public var toolInputJSON: String
-    public var createdAt: Date
+    public var createdAt: TimeInterval
     public var seenOnScreen: Bool
     public var misses: Int
 }
@@ -17,8 +17,8 @@ public struct ClaudeSession: Equatable, Sendable {
     public var projectDir: String?
     public var pane: String?
     public var state: ClaudeState
-    public var stateSince: Date
-    public var lastSeen: Date
+    public var stateSince: TimeInterval
+    public var lastSeen: TimeInterval
     public var model: String?
     public var costUSD: Double?
     public var contextPct: Double?
@@ -29,10 +29,12 @@ public struct ClaudeStore: Sendable {
     public static let silentLimit: TimeInterval = 1800
     public static let unseenGrace: TimeInterval = 5
     private static let maxSessions = 8
+    public static let tombstoneTTL: TimeInterval = 600
     private static let maxIdBytes = 39
 
     private let runTag: String
     private var requestCount = 0
+    private var ended: [String: TimeInterval] = [:]
     public private(set) var sessions: [String: ClaudeSession] = [:]
     public private(set) var fiveHour: UsageWindow?
     public private(set) var sevenDay: UsageWindow?
@@ -41,17 +43,27 @@ public struct ClaudeStore: Sendable {
         self.runTag = runTag
     }
 
-    public mutating func apply(_ e: ClaudeHookEvent, pane: String?, now: Date) {
+    public mutating func apply(_ e: ClaudeHookEvent, pane: String?, now: TimeInterval) {
         if e.event == "SessionEnd" {
             sessions[e.sessionId] = nil
+            ended[e.sessionId] = now
+            return
+        }
+        if e.event == "SessionStart" {
+            ended[e.sessionId] = nil
+        } else if isEnded(e.sessionId, now) {
             return
         }
         var s = sessions[e.sessionId] ?? ClaudeSession(id: e.sessionId, state: .waiting, stateSince: now, lastSeen: now)
         s.lastSeen = now
         if let cwd = e.cwd { s.cwd = cwd }
-        if let pane { s.pane = pane }
+        if let pane {
+            claimPane(pane, for: e.sessionId, now: now)
+            s.pane = pane
+        }
         switch e.event {
         case "SessionStart":
+            s.pending = nil
             set(&s, .waiting, now)
         case "UserPromptSubmit":
             s.pending = nil
@@ -89,10 +101,14 @@ public struct ClaudeStore: Sendable {
         sessions[e.sessionId] = s
     }
 
-    public mutating func apply(_ u: ClaudeStatusUpdate, pane: String?, now: Date) {
+    public mutating func apply(_ u: ClaudeStatusUpdate, pane: String?, now: TimeInterval) {
+        if isEnded(u.sessionId, now) { return }
         var s = sessions[u.sessionId] ?? ClaudeSession(id: u.sessionId, state: .waiting, stateSince: now, lastSeen: now)
         s.lastSeen = now
-        if let pane { s.pane = pane }
+        if let pane {
+            claimPane(pane, for: u.sessionId, now: now)
+            s.pane = pane
+        }
         if let model = u.model { s.model = model }
         if let cost = u.costUSD { s.costUSD = cost }
         if let ctx = u.contextPct { s.contextPct = ctx }
@@ -102,14 +118,15 @@ public struct ClaudeStore: Sendable {
         if let w = u.sevenDay { sevenDay = w }
     }
 
-    public mutating func expire(now: Date) {
-        sessions = sessions.filter { now.timeIntervalSince($0.value.lastSeen) <= Self.silentLimit }
-        let t = now.timeIntervalSince1970
+    public mutating func expire(now: TimeInterval, wall: Date) {
+        sessions = sessions.filter { now - $0.value.lastSeen <= Self.silentLimit }
+        ended = ended.filter { now - $0.value <= Self.tombstoneTTL }
+        let t = wall.timeIntervalSince1970
         if let w = fiveHour, t >= w.resetsAt { fiveHour = nil }
         if let w = sevenDay, t >= w.resetsAt { sevenDay = nil }
     }
 
-    public mutating func resolve(session: String, request: String, state: ClaudeState, now: Date) {
+    public mutating func resolve(session: String, request: String, state: ClaudeState, now: TimeInterval) {
         guard var s = sessions[session], s.pending?.request == request else { return }
         s.pending = nil
         set(&s, state, now)
@@ -117,7 +134,7 @@ public struct ClaudeStore: Sendable {
     }
 
     @discardableResult
-    public mutating func promptCheck(session: String, request: String, visible: Bool, now: Date) -> Bool {
+    public mutating func promptCheck(session: String, request: String, visible: Bool, now: TimeInterval) -> Bool {
         guard var s = sessions[session], var p = s.pending, p.request == request else { return false }
         var cleared = false
         if visible {
@@ -125,7 +142,7 @@ public struct ClaudeStore: Sendable {
             p.misses = 0
         } else {
             p.misses += 1
-            cleared = p.misses >= 2 && (p.seenOnScreen || now.timeIntervalSince(p.createdAt) >= Self.unseenGrace)
+            cleared = p.misses >= 2 && (p.seenOnScreen || now - p.createdAt >= Self.unseenGrace)
         }
         if cleared {
             s.pending = nil
@@ -158,8 +175,8 @@ public struct ClaudeStore: Sendable {
                 "project": ClaudeText.project(s.projectDir ?? s.cwd),
                 "model": s.model.map { ClaudeText.capped($0, bytes: 15) } ?? "",
                 "state": s.state.rawValue,
-                "ctx": s.contextPct.map { min(100, max(0, Int($0.rounded()))) } ?? -1,
-                "cost_cents": s.costUSD.map { Int(($0 * 100).rounded()) } ?? -1,
+                "ctx": s.contextPct.map { Self.clampedInt($0, 0, 100) } ?? -1,
+                "cost_cents": s.costUSD.map { Self.clampedInt($0 * 100, 0, 100_000_000) } ?? -1,
                 "tmux": s.pane != nil,
             ]
         }
@@ -191,10 +208,31 @@ public struct ClaudeStore: Sendable {
 
     private func windowJSON(_ w: UsageWindow?, _ now: Date) -> Any {
         guard let w, now.timeIntervalSince1970 < w.resetsAt else { return NSNull() }
-        return ["pct": min(100, max(0, Int(w.pct.rounded()))), "resets_at": Int(w.resetsAt)]
+        return ["pct": Self.clampedInt(w.pct, 0, 100), "resets_at": Self.clampedInt(w.resetsAt, 0, 4_000_000_000_000)]
     }
 
-    private func set(_ s: inout ClaudeSession, _ state: ClaudeState, _ now: Date) {
+    private static func clampedInt(_ d: Double, _ lo: Double, _ hi: Double) -> Int {
+        guard d.isFinite else { return Int(lo) }
+        return Int(min(hi, max(lo, d)).rounded())
+    }
+
+    private func isEnded(_ id: String, _ now: TimeInterval) -> Bool {
+        guard let at = ended[id] else { return false }
+        return now - at <= Self.tombstoneTTL
+    }
+
+    private mutating func claimPane(_ pane: String, for id: String, now: TimeInterval) {
+        for (key, var other) in sessions where key != id && other.pane == pane {
+            other.pane = nil
+            if other.pending != nil {
+                other.pending = nil
+                if other.state == .permission { set(&other, .working, now) }
+            }
+            sessions[key] = other
+        }
+    }
+
+    private func set(_ s: inout ClaudeSession, _ state: ClaudeState, _ now: TimeInterval) {
         if s.state != state {
             s.state = state
             s.stateSince = now

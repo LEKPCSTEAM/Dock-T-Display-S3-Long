@@ -4,11 +4,12 @@ import Testing
 
 private let c1 = #"{"prompt":{"pending":1,"project":"T-Display-S3-Long","request":"a3f9-1","session":"5f0c6c1e-2b7a-4c55-9a51-0d7f3b1c9e42","summary":"pio run -e ntp_clock","tmux":true,"tool":"Bash"},"sessions":[{"cost_cents":142,"ctx":37,"id":"5f0c6c1e-2b7a-4c55-9a51-0d7f3b1c9e42","model":"Opus 5.5","project":"T-Display-S3-Long","state":"permission","tmux":true},{"cost_cents":-1,"ctx":-1,"id":"9b2d7e00-1111-4222-8333-444455556666","model":"","project":"caltera","state":"working","tmux":false}],"usage":{"five_hour":{"pct":42,"resets_at":1795530000},"seven_day":{"pct":13,"resets_at":1795900000}}}"#
 private let c2 = #"{"prompt":null,"sessions":[],"usage":{"five_hour":null,"seven_day":null}}"#
-private let t0 = Date(timeIntervalSince1970: 1795519000)
+private let t0: TimeInterval = 5000
+private let wall0 = Date(timeIntervalSince1970: 1795519000)
 
-private func at(_ s: TimeInterval) -> Date { t0.addingTimeInterval(s) }
+private func at(_ s: TimeInterval) -> TimeInterval { t0 + s }
 
-private func feed(_ store: inout ClaudeStore, _ data: Data, pane: String? = nil, at now: Date) {
+private func feed(_ store: inout ClaudeStore, _ data: Data, pane: String? = nil, at now: TimeInterval) {
     store.apply(ClaudeHookEvent.decode(data)!, pane: pane, now: now)
 }
 
@@ -31,7 +32,7 @@ private func json(_ body: String) throws -> [String: Any] {
     }
 
     @Test func bodyMatchesC2() {
-        #expect(ClaudeStore(runTag: "a3f9").body(now: t0) == c2)
+        #expect(ClaudeStore(runTag: "a3f9").body(now: wall0) == c2)
     }
 
     @Test func stateTransitionsFollowSpec() {
@@ -103,9 +104,9 @@ private func json(_ body: String) throws -> [String: Any] {
     @Test func silentSessionsDropped() {
         var store = ClaudeStore(runTag: "a3f9")
         feed(&store, hk0, at: t0)
-        store.expire(now: at(1800))
+        store.expire(now: at(1800), wall: wall0)
         #expect(store.sessions[claudeA] != nil)
-        store.expire(now: at(1801))
+        store.expire(now: at(1801), wall: wall0)
         #expect(store.sessions[claudeA] == nil)
     }
 
@@ -122,7 +123,7 @@ private func json(_ body: String) throws -> [String: Any] {
     @Test func usageWindowDroppedAfterReset() {
         var store = ClaudeStore(runTag: "a3f9")
         store.apply(ClaudeStatusUpdate.decode(sl1)!, pane: nil, now: t0)
-        store.expire(now: Date(timeIntervalSince1970: 1795530000))
+        store.expire(now: t0, wall: Date(timeIntervalSince1970: 1795530000))
         #expect(store.fiveHour == nil)
         #expect(store.sevenDay != nil)
     }
@@ -138,7 +139,7 @@ private func json(_ body: String) throws -> [String: Any] {
         for (i, id) in ids.enumerated() {
             feed(&store, hookJSON(id, plan[i].0, extra: plan[i].1), at: at(TimeInterval(i)))
         }
-        let sessions = try #require(try json(store.body(now: t0))["sessions"] as? [[String: Any]])
+        let sessions = try #require(try json(store.body(now: wall0))["sessions"] as? [[String: Any]])
         let got = sessions.map { $0["id"] as! String }
         #expect(got == ["s9", "s4", "s6", "s2", "s8", "s5", "s1", "s7"])
     }
@@ -157,7 +158,7 @@ private func json(_ body: String) throws -> [String: Any] {
         let input = try JSONSerialization.data(withJSONObject: ["command": command])
         let extra = #","tool_name":"Bash","tool_input":"# + String(decoding: input, as: UTF8.self)
         feed(&store, hookJSON(String(format: "%039d", 0), "PermissionRequest", extra: extra), at: at(20))
-        let body = store.body(now: t0)
+        let body = store.body(now: wall0)
         #expect(body.utf8.count <= 4096)
         let parsed = try json(body)
         #expect((parsed["sessions"] as? [Any])?.count == 8)
@@ -168,7 +169,7 @@ private func json(_ body: String) throws -> [String: Any] {
         var store = ClaudeStore(runTag: "a3f9")
         feed(&store, hookJSON(claudeB, "PermissionRequest", extra: hk1Extra), at: at(0))
         feed(&store, hk1, at: at(5))
-        let prompt = try #require(try json(store.body(now: t0))["prompt"] as? [String: Any])
+        let prompt = try #require(try json(store.body(now: wall0))["prompt"] as? [String: Any])
         #expect(prompt["session"] as? String == claudeB)
         #expect(prompt["pending"] as? Int == 2)
     }
@@ -200,6 +201,67 @@ private func json(_ body: String) throws -> [String: Any] {
             #expect(!check(&store, "a3f9-0", false, TimeInterval(10 * i)))
         }
         #expect(store.sessions[claudeA]?.pending?.misses == 0)
+    }
+
+    @Test func hugeAndNonFiniteNumbersDoNotTrap() throws {
+        var store = ClaudeStore(runTag: "a3f9")
+        let big = ClaudeStatusUpdate(sessionId: claudeA, costUSD: 1e300, contextPct: 1e30,
+                                     fiveHour: UsageWindow(pct: .nan, resetsAt: 1e30))
+        store.apply(big, pane: nil, now: t0)
+        let body = try json(store.body(now: wall0))
+        let s = try #require((body["sessions"] as? [[String: Any]])?.first)
+        #expect(s["ctx"] as? Int == 100)
+        #expect(s["cost_cents"] as? Int == 100_000_000)
+        #expect(((body["usage"] as? [String: Any])?["five_hour"] as? [String: Any])?["pct"] as? Int == 0)
+        let wire = Data(#"{"session_id":"A","context_window":{"used_percentage":1e999},"cost":{"total_cost_usd":1e300}}"#.utf8)
+        #expect(ClaudeStatusUpdate.decode(wire)?.contextPct == nil)
+        let huge = Data(#"{"session_id":"A","cost":{"total_cost_usd":1e300},"rate_limits":{"five_hour":{"used_percentage":1e30,"resets_at":1e30}}}"#.utf8)
+        var s2 = ClaudeStore(runTag: "a3f9")
+        s2.apply(try #require(ClaudeStatusUpdate.decode(huge)), pane: nil, now: t0)
+        #expect(s2.body(now: wall0).utf8.count > 0)
+    }
+
+    @Test func lateEventsAfterSessionEndDoNotRecreateGhost() {
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hk0, at: at(0))
+        feed(&store, hookJSON(claudeA, "SessionEnd"), at: at(1))
+        feed(&store, hookJSON(claudeA, "Stop"), at: at(2))
+        store.apply(ClaudeStatusUpdate.decode(sl2)!, pane: nil, now: at(3))
+        #expect(store.sessions[claudeA] == nil)
+        feed(&store, hk0, at: at(4))
+        #expect(store.sessions[claudeA] != nil)
+        feed(&store, hookJSON(claudeA, "SessionEnd"), at: at(5))
+        store.apply(ClaudeStatusUpdate.decode(sl2)!, pane: nil, now: at(5 + ClaudeStore.tombstoneTTL + 1))
+        #expect(store.sessions[claudeA] != nil)
+    }
+
+    @Test func expiryUsesInjectedMonotonicClockNotWallClock() {
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hk0, at: t0)
+        store.expire(now: at(10), wall: Date(timeIntervalSince1970: 0))
+        #expect(store.sessions[claudeA] != nil)
+        store.expire(now: at(10), wall: Date(timeIntervalSince1970: 4_000_000_000))
+        #expect(store.sessions[claudeA] != nil)
+    }
+
+    @Test func paneReassignmentClearsOldSessionPaneAndPrompt() {
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hk1, pane: "%37", at: at(0))
+        feed(&store, hookJSON(claudeB, "SessionStart"), pane: "%37", at: at(1))
+        let a = store.sessions[claudeA]
+        #expect(a?.pane == nil)
+        #expect(a?.pending == nil)
+        #expect(a?.state == .working)
+        #expect(store.sessions[claudeB]?.pane == "%37")
+        #expect(store.pendingPrompts().isEmpty)
+    }
+
+    @Test func sessionStartClearsPendingPrompt() {
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hk1, at: at(0))
+        feed(&store, hk0, at: at(1))
+        #expect(store.sessions[claudeA]?.state == .waiting)
+        #expect(store.sessions[claudeA]?.pending == nil)
     }
 
     @Test func resolveNeedsCurrentRequest() {

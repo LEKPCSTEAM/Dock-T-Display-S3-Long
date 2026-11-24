@@ -83,7 +83,7 @@ public struct ClaudeStatusUpdate: Equatable, Sendable {
     }
 
     private static func number(_ value: Any?) -> Double? {
-        guard let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+        guard let n = value as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), n.doubleValue.isFinite else { return nil }
         return n.doubleValue
     }
 
