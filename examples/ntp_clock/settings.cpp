@@ -44,7 +44,7 @@ static void unlock()
 
 static bool copy_str(Preferences &from, Preferences &to, const char *key)
 {
-    if (!from.isKey(key)) return true;
+    if (!from.isKey(key) || to.isKey(key)) return true;
     String v = from.getString(key, "");
     if (v.length() == 0) return true;
     return to.putString(key, v) == v.length();
@@ -65,11 +65,11 @@ static void migrate_old_namespace()
     }
     if (src.isKey("ssid") || src.isKey("bright")) {
         bool ok = true;
-        if (src.isKey("bright")) ok &= dst.putUChar("bright", src.getUChar("bright", 200)) > 0;
-        if (src.isKey("night")) ok &= dst.putBool("night", src.getBool("night", true)) > 0;
-        if (src.isKey("theme")) ok &= dst.putUChar("theme", src.getUChar("theme", THEME_DAY_COLOR)) > 0;
-        if (src.isKey("lat")) ok &= dst.putFloat("lat", src.getFloat("lat", 13.7563f)) > 0;
-        if (src.isKey("lon")) ok &= dst.putFloat("lon", src.getFloat("lon", 100.5018f)) > 0;
+        if (src.isKey("bright") && !dst.isKey("bright")) ok &= dst.putUChar("bright", src.getUChar("bright", 200)) > 0;
+        if (src.isKey("night") && !dst.isKey("night")) ok &= dst.putBool("night", src.getBool("night", true)) > 0;
+        if (src.isKey("theme") && !dst.isKey("theme")) ok &= dst.putUChar("theme", src.getUChar("theme", THEME_DAY_COLOR)) > 0;
+        if (src.isKey("lat") && !dst.isKey("lat")) ok &= dst.putFloat("lat", src.getFloat("lat", 13.7563f)) > 0;
+        if (src.isKey("lon") && !dst.isKey("lon")) ok &= dst.putFloat("lon", src.getFloat("lon", 100.5018f)) > 0;
         ok &= copy_str(src, dst, "city");
         ok &= copy_str(src, dst, "pass");
         ok &= copy_str(src, dst, "ssid");
