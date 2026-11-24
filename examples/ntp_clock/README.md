@@ -11,6 +11,8 @@ pio device monitor -b 115200
 
 `platformio.ini` ตั้ง `default_envs = ntp_clock` ไว้แล้ว (`src_dir` ของ repo นี้อิงตาม `default_envs`)
 
+Flash ครั้งแรกหลังเพิ่ม LongDeck ต้องเขียน partition table ใหม่ (`partitions_longdeck.csv`) — คำสั่ง upload ข้างบนทำให้เอง และจะ format partition เก็บข้อมูล deck ใหม่ ส่วน WiFi/settings ที่บันทึกไว้ไม่หาย (NVS offset เดิม, settings migrate เอง)
+
 ## ตั้งค่า WiFi ครั้งแรก
 
 1. เปิดเครื่องครั้งแรก (หรือต่อ WiFi เดิมไม่ได้ใน 20 วินาที) จอจะขึ้นหน้า **ตั้งค่า WiFi** พร้อม QR
@@ -28,6 +30,26 @@ pio device monitor -b 115200
 | แตะตัวเลขเวลาในหน้าแรก | สลับธีม สีประจำวัน / สีรุ้ง / ขาวเรียบ |
 | หน้า Focus: แตะ / กดค้าง | เริ่ม-หยุด Pomodoro / รีเซ็ต |
 | เปิด `http://longdeck.local` | เว็บตั้งค่า: ความสว่าง, หรี่จอกลางคืน, ธีม, เมืองสำหรับพยากรณ์อากาศ, sync เวลา, เปลี่ยน WiFi |
+
+## LongDeck (Stream Deck)
+
+แอป menu-bar บน Mac จับคู่กับบอร์ดผ่าน WiFi แล้วแสดงปุ่มแบบ Stream Deck บนจอ
+
+1. Build แอป: `cd mac/LongDeck && ./scripts/bundle.sh` แล้วเปิด `mac/LongDeck/build/LongDeck.app`
+2. Config อยู่ที่ `~/Library/Application Support/LongDeck/config.json` (สร้างหน้า Dev ตัวอย่างให้ตอนรันครั้งแรก) แก้แล้วแอปอ่านใหม่เอง — ถ้า config ผิดจะแสดง error และไม่ push ขึ้นบอร์ด; layout frame ต้องไม่เกิน 15360 bytes
+3. จับคู่: เมนู "Pair with board…" เลือกบอร์ด แล้วพิมพ์รหัส 6 หลักที่แสดงบนจอบอร์ด (ใช้ได้ 60 วินาที)
+4. ปุ่ม hotkey / media / volume / type-text ต้องอนุญาต Accessibility — เมนู "Grant Accessibility…"
+5. หน้า deck ต่อท้าย นาฬิกา → ปฏิทิน → Focus → System ได้สูงสุด 8 หน้า (grid 8x2) ถ้าแอปไม่ได้เชื่อมต่อจะขึ้นป้าย "Mac offline" และปุ่มจางลง
+
+ยกเลิกการจับคู่ Mac: กดปุ่ม forget ในเว็บตั้งค่า หรือ
+
+```bash
+curl -X POST http://longdeck.local/api/deck/forget
+```
+
+(เป็น POST เท่านั้น; ใช้ไม่ได้ตอนอยู่ในโหมด portal และ browser ข้าม origin จะถูกปฏิเสธ 403)
+
+ข้อจำกัด: อุปกรณ์ไหนใน LAN ก็เริ่มจับคู่ใหม่ได้ (บอร์ดจะแสดงรหัสบนจอ) และการจับคู่ใหม่จะแทนที่ key เดิม
 
 ## ลูกเล่น
 
