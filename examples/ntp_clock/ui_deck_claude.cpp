@@ -144,12 +144,12 @@ static void sessions_create(ClaudeWidget *cw, lv_coord_t bw, lv_coord_t bh)
 
         r->proj = child_label(r->obj, COLOR_TEXT, "");
         lv_label_set_long_mode(r->proj, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(r->proj, proj_w);
+        lv_obj_set_size(r->proj, proj_w, 25);
         lv_obj_align(r->proj, LV_ALIGN_LEFT_MID, 26, 0);
 
         r->right = child_label(r->obj, COLOR_TEXT_DIM, "");
         lv_label_set_long_mode(r->right, LV_LABEL_LONG_CLIP);
-        lv_obj_set_width(r->right, right_reserve(cw->w));
+        lv_obj_set_size(r->right, right_reserve(cw->w), 25);
         lv_obj_set_style_text_align(r->right, LV_TEXT_ALIGN_RIGHT, 0);
         lv_obj_align(r->right, LV_ALIGN_RIGHT_MID, -8, 0);
     }
@@ -180,7 +180,7 @@ static void usage_create(ClaudeWidget *cw, lv_coord_t bw, lv_coord_t bh)
         lv_obj_align(s->pct, LV_ALIGN_TOP_RIGHT, -6, 2);
         if (cw->w >= 2) {
             s->reset = child_label(sec, COLOR_TEXT_DIM, "");
-            lv_obj_align(s->reset, LV_ALIGN_TOP_MID, 0, 2);
+            lv_obj_align(s->reset, LV_ALIGN_TOP_LEFT, 34, 2);
         }
         lv_obj_t *b = lv_bar_create(sec);
         no_click(b);
