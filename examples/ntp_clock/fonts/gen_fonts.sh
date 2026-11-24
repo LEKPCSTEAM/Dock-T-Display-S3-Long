@@ -21,8 +21,8 @@ TEXT_RANGE="0x20-0x7E,0x0E01-0x0E3A,0x0E3F-0x0E5B,0xB0,0xB7,0x2022,0x2013,0x2014
 
 conv() { lv_font_conv --bpp 4 --no-compress --format lvgl --lv-include lvgl.h "$@"; }
 
-conv --font "$KANIT_DIR/Kanit-Medium.ttf" -r 0x30-0x3A --size 128 -o font_digits_128.c
-conv --font "$KANIT_DIR/Kanit-Medium.ttf" -r 0x20-0x3A,0x43,0xB0,0x2014 --size 56 -o font_digits_56.c
+conv --font "$KANIT_DIR/Kanit-Medium.ttf" -r 0x30-0x3A --size 128 -o ui_font_digits_128.c
+conv --font "$KANIT_DIR/Kanit-Medium.ttf" -r 0x20-0x3A,0x43,0xB0,0x2014 --size 56 -o ui_font_digits_56.c
 
 # *_base fonts are wrapped by ../thai_fonts.c, which stacks tone marks.
 for spec in "Medium 32" "Regular 22" "Regular 16"; do

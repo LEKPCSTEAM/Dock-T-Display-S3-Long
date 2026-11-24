@@ -219,9 +219,9 @@ void page_clock_create(lv_obj_t *tile)
         ui_strip_obj(d->cell);
         lv_obj_clear_flag(d->cell, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_pos(d->cell, x, CELL_Y);
-        lv_obj_set_size(d->cell, CELL_W, font_digits_128.line_height);
-        d->old = ui_label(d->cell, &font_digits_128, COLOR_TEXT, "");
-        d->cur = ui_label(d->cell, &font_digits_128, COLOR_TEXT, "");
+        lv_obj_set_size(d->cell, CELL_W, ui_font_digits_128.line_height);
+        d->old = ui_label(d->cell, &ui_font_digits_128, COLOR_TEXT, "");
+        d->cur = ui_label(d->cell, &ui_font_digits_128, COLOR_TEXT, "");
         lv_obj_t *pair[2] = {d->old, d->cur};
         for (int k = 0; k < 2; k++) {
             lv_obj_set_width(pair[k], CELL_W);
@@ -231,7 +231,7 @@ void page_clock_create(lv_obj_t *tile)
         lv_obj_add_flag(d->old, LV_OBJ_FLAG_HIDDEN);
         x += CELL_W;
         if (i == 1) {
-            colon = ui_label(time_area, &font_digits_128, COLOR_TEXT, ":");
+            colon = ui_label(time_area, &ui_font_digits_128, COLOR_TEXT, ":");
             lv_obj_set_width(colon, COLON_W);
             lv_obj_set_style_text_align(colon, LV_TEXT_ALIGN_CENTER, 0);
             lv_obj_set_pos(colon, x, CELL_Y);
@@ -239,17 +239,17 @@ void page_clock_create(lv_obj_t *tile)
         }
     }
 
-    placeholder = ui_label(time_area, &font_digits_56, COLOR_TEXT_DIM, "--:--");
-    lv_obj_set_pos(placeholder, TIME_X, CELL_Y + (font_digits_128.line_height - font_digits_56.line_height) / 2);
+    placeholder = ui_label(time_area, &ui_font_digits_56, COLOR_TEXT_DIM, "--:--");
+    lv_obj_set_pos(placeholder, TIME_X, CELL_Y + (ui_font_digits_128.line_height - ui_font_digits_56.line_height) / 2);
 
-    lv_coord_t base128 = font_digits_128.line_height - font_digits_128.base_line;
-    lv_coord_t base56  = font_digits_56.line_height - font_digits_56.base_line;
+    lv_coord_t base128 = ui_font_digits_128.line_height - ui_font_digits_128.base_line;
+    lv_coord_t base56  = ui_font_digits_56.line_height - ui_font_digits_56.base_line;
     lv_coord_t sec_y   = CELL_Y + base128 - base56;
-    sec_label = ui_label(time_area, &font_digits_56, COLOR_TEXT, "00");
+    sec_label = ui_label(time_area, &ui_font_digits_56, COLOR_TEXT, "00");
     lv_obj_set_pos(sec_label, x + 2, sec_y);
 
-    hint_label = ui_label(time_area, &font_th_16, COLOR_TEXT_DIM, "");
-    lv_obj_set_pos(hint_label, TIME_X + 4, CELL_Y + font_digits_128.line_height + 10);
+    hint_label = ui_label(time_area, &ui_font_th_16, COLOR_TEXT_DIM, "");
+    lv_obj_set_pos(hint_label, TIME_X + 4, CELL_Y + ui_font_digits_128.line_height + 10);
 
     lv_obj_t *panel = lv_obj_create(tile);
     ui_strip_obj(panel);
@@ -276,17 +276,17 @@ void page_clock_create(lv_obj_t *tile)
 
     lv_obj_t *icons = make_row(panel, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(icons, 12, 0);
-    wifi_icon = ui_label(icons, &font_th_16, COLOR_WARN, LV_SYMBOL_WIFI);
-    sat_icon  = ui_label(icons, &font_th_16, COLOR_TEXT_DIM, SYM_SATELLITE);
+    wifi_icon = ui_label(icons, &ui_font_th_16, COLOR_WARN, LV_SYMBOL_WIFI);
+    sat_icon  = ui_label(icons, &ui_font_th_16, COLOR_TEXT_DIM, SYM_SATELLITE);
 
-    day_label  = scrolling_label(panel, &font_th_32, COLOR_TEXT, PANEL_INNER_W);
-    date_label = scrolling_label(panel, &font_th_22, COLOR_TEXT, PANEL_INNER_W);
+    day_label  = scrolling_label(panel, &ui_font_th_32, COLOR_TEXT, PANEL_INNER_W);
+    date_label = scrolling_label(panel, &ui_font_th_22, COLOR_TEXT, PANEL_INNER_W);
 
     lv_obj_t *wx = make_row(panel, LV_FLEX_FLOW_ROW);
     lv_obj_set_style_pad_column(wx, 6, 0);
-    wx_icon = ui_label(wx, &font_th_22, COLOR_TEXT, "");
-    wx_temp = ui_label(wx, &font_th_22, COLOR_TEXT, "");
-    wx_text = scrolling_label(wx, &font_th_16, COLOR_TEXT_DIM, 70);
+    wx_icon = ui_label(wx, &ui_font_th_22, COLOR_TEXT, "");
+    wx_temp = ui_label(wx, &ui_font_th_22, COLOR_TEXT, "");
+    wx_text = scrolling_label(wx, &ui_font_th_16, COLOR_TEXT_DIM, 70);
 
     bar = lv_bar_create(tile);
     lv_obj_remove_style_all(bar);

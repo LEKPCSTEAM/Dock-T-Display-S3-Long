@@ -2,14 +2,15 @@
 
 #include "lvgl.h"
 
-// Kanit (OFL). Digits fonts hold only "0-9 :" (+ " %+-./C°" for 56px).
-LV_FONT_DECLARE(font_digits_128);
-LV_FONT_DECLARE(font_digits_56);
+// Names match the EEZ project fonts so generated screens link to these.
+// Kanit (OFL). Digits fonts hold only "0-9 :" (+ " %+-./C°—" for 56px).
+LV_FONT_DECLARE(ui_font_digits_128);
+LV_FONT_DECLARE(ui_font_digits_56);
 
-// Thai + ASCII + "°·•–…" + all LV_SYMBOL_* + the SYM_* icons below.
-LV_FONT_DECLARE(font_th_32);
-LV_FONT_DECLARE(font_th_22);
-LV_FONT_DECLARE(font_th_16);
+// Thai + ASCII + "°·•–—…" + all LV_SYMBOL_* + the SYM_* icons below.
+LV_FONT_DECLARE(ui_font_th_32);
+LV_FONT_DECLARE(ui_font_th_22);
+LV_FONT_DECLARE(ui_font_th_16);
 
 #define SYM_SUN               "\xEF\x86\x85"
 #define SYM_MOON              "\xEF\x86\x86"

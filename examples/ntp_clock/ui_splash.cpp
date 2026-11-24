@@ -63,8 +63,8 @@ void ui_splash_create()
     lv_obj_clear_flag(col, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_size(col, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
-    ui_label(col, &font_th_32, COLOR_TEXT, "นาฬิกาไทย");
-    ui_label(col, &font_th_16, COLOR_TEXT_DIM, "ThaiClock");
+    ui_label(col, &ui_font_th_32, COLOR_TEXT, "นาฬิกาไทย");
+    ui_label(col, &ui_font_th_16, COLOR_TEXT_DIM, "ThaiClock");
 
     lv_obj_t *track = lv_obj_create(overlay);
     ui_strip_obj(track);
@@ -93,7 +93,7 @@ void ui_splash_create()
     lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
     lv_anim_start(&a);
 
-    status_label = ui_label(overlay, &font_th_16, COLOR_TEXT_DIM, "");
+    status_label = ui_label(overlay, &ui_font_th_16, COLOR_TEXT_DIM, "");
     lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 128);
     lv_obj_set_style_text_align(status_label, LV_TEXT_ALIGN_CENTER, 0);
 }

@@ -240,13 +240,13 @@ void page_calendar_create(lv_obj_t *tile)
 
     const lv_coord_t x = 204;
 
-    s_date = ui_label(tile, &font_th_22, COLOR_TEXT, "—");
+    s_date = ui_label(tile, &ui_font_th_22, COLOR_TEXT, "—");
     lv_obj_set_pos(s_date, x, 6);
 
-    s_year = ui_label(tile, &font_th_16, COLOR_TEXT_DIM, "—");
+    s_year = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
     lv_obj_set_pos(s_year, x, 38);
 
-    s_doy = ui_label(tile, &font_th_16, COLOR_TEXT_DIM, "—");
+    s_doy = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
     lv_obj_set_pos(s_doy, x, 62);
 
     s_bar = lv_bar_create(tile);
@@ -257,13 +257,13 @@ void page_calendar_create(lv_obj_t *tile)
     lv_obj_set_style_bg_opa(s_bar, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_opa(s_bar, LV_OPA_COVER, LV_PART_INDICATOR);
 
-    s_progress = ui_label(tile, &font_th_16, COLOR_TEXT_DIM, "—");
+    s_progress = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
     lv_obj_set_pos(s_progress, x, 108);
 
-    s_gift = ui_label(tile, &font_th_22, COLOR_TEXT, SYM_GIFT);
+    s_gift = ui_label(tile, &ui_font_th_22, COLOR_TEXT, SYM_GIFT);
     lv_obj_set_pos(s_gift, x, 142);
 
-    s_holiday = ui_label(tile, &font_th_16, COLOR_TEXT, "—");
+    s_holiday = ui_label(tile, &ui_font_th_16, COLOR_TEXT, "—");
     lv_obj_set_pos(s_holiday, x + 34, 146);
 
     s_date_txt[0] = s_year_txt[0] = s_doy_txt[0] = s_progress_txt[0] = s_holiday_txt[0] = 0;

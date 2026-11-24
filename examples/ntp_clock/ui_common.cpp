@@ -129,3 +129,12 @@ void ui_strip_obj(lv_obj_t *obj)
     lv_obj_remove_style_all(obj);
     lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
 }
+
+void ui_mount_screen(lv_obj_t *eez_screen, lv_obj_t *dst)
+{
+    // LVGL 8 cannot reparent a screen, only its children.
+    while (lv_obj_get_child_cnt(eez_screen) > 0) {
+        lv_obj_set_parent(lv_obj_get_child(eez_screen, 0), dst);
+    }
+    lv_obj_del(eez_screen);
+}

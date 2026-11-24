@@ -229,13 +229,13 @@ void ui_init()
 
     lv_disp_t  *disp  = lv_disp_get_default();
     lv_theme_t *theme = lv_theme_default_init(disp, lv_palette_main(LV_PALETTE_BLUE),
-                                              lv_palette_main(LV_PALETTE_ORANGE), true, &font_th_16);
+                                              lv_palette_main(LV_PALETTE_ORANGE), true, &ui_font_th_16);
     lv_disp_set_theme(disp, theme);
 
     lv_obj_t *scr = lv_scr_act();
     lv_obj_set_style_bg_color(scr, COLOR_BG, 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-    lv_obj_set_style_text_font(scr, &font_th_16, 0);
+    lv_obj_set_style_text_font(scr, &ui_font_th_16, 0);
 
     tv = lv_tileview_create(scr);
     lv_obj_remove_style_all(tv);
@@ -319,7 +319,7 @@ void ui_toast(const char *text)
     lv_obj_set_style_pad_hor(toast, 22, 0);
     lv_obj_set_style_pad_ver(toast, 8, 0);
     lv_obj_set_style_opa(toast, LV_OPA_TRANSP, 0);
-    ui_label(toast, &font_th_16, COLOR_TEXT, text);
+    ui_label(toast, &ui_font_th_16, COLOR_TEXT, text);
     lv_obj_align(toast, LV_ALIGN_BOTTOM_MID, 0, -22);
 
     lv_anim_t a;

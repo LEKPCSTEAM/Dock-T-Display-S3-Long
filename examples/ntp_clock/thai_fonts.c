@@ -50,7 +50,7 @@ static const thai_font_dsc_t th16 = {&font_th_16_base, 6};
 static const thai_font_dsc_t th22 = {&font_th_22_base, 8};
 static const thai_font_dsc_t th32 = {&font_th_32_base, 9};
 
-const lv_font_t font_th_16 = {
+const lv_font_t ui_font_th_16 = {
     .get_glyph_dsc       = thai_glyph_dsc,
     .get_glyph_bitmap    = thai_glyph_bitmap,
     .line_height         = 20 + 5,
@@ -61,7 +61,7 @@ const lv_font_t font_th_16 = {
     .dsc                 = &th16,
 };
 
-const lv_font_t font_th_22 = {
+const lv_font_t ui_font_th_22 = {
     .get_glyph_dsc       = thai_glyph_dsc,
     .get_glyph_bitmap    = thai_glyph_bitmap,
     .line_height         = 26 + 7,
@@ -72,7 +72,7 @@ const lv_font_t font_th_22 = {
     .dsc                 = &th22,
 };
 
-const lv_font_t font_th_32 = {
+const lv_font_t ui_font_th_32 = {
     .get_glyph_dsc       = thai_glyph_dsc,
     .get_glyph_bitmap    = thai_glyph_bitmap,
     .line_height         = 38 + 7,

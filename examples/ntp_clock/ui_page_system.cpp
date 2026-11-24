@@ -51,9 +51,9 @@ void set_cached(CachedLabel &c, const char *txt)
 void make_row(Row row, lv_coord_t y, const char *icon, lv_coord_t text_w)
 {
     lv_obj_t *tile = lv_obj_get_parent(s_slider);
-    s_icons[row] = ui_label(tile, &font_th_16, COLOR_TEXT_DIM, icon);
+    s_icons[row] = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, icon);
     lv_obj_set_pos(s_icons[row], 12, y);
-    s_text[row].obj = ui_label(tile, &font_th_16, COLOR_TEXT, "—");
+    s_text[row].obj = ui_label(tile, &ui_font_th_16, COLOR_TEXT, "—");
     s_text[row].txt[0] = 0;
     lv_obj_set_width(s_text[row].obj, text_w);
     lv_label_set_long_mode(s_text[row].obj, LV_LABEL_LONG_DOT);
@@ -95,7 +95,7 @@ void on_sync(lv_event_t *)
 
 lv_obj_t *make_switch(lv_obj_t *tile, lv_coord_t y, const char *text, lv_event_cb_t cb)
 {
-    lv_obj_t *label = ui_label(tile, &font_th_16, COLOR_TEXT, text);
+    lv_obj_t *label = ui_label(tile, &ui_font_th_16, COLOR_TEXT, text);
     lv_obj_set_pos(label, 372, y + 6);
 
     lv_obj_t *sw = lv_switch_create(tile);
@@ -117,7 +117,7 @@ lv_obj_t *make_button(lv_obj_t *tile, lv_coord_t x, const char *text, lv_event_c
     lv_obj_set_style_radius(btn, 12, 0);
     lv_obj_set_style_shadow_width(btn, 0, 0);
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t *label = ui_label(btn, &font_th_16, COLOR_TEXT, text);
+    lv_obj_t *label = ui_label(btn, &ui_font_th_16, COLOR_TEXT, text);
     lv_obj_center(label);
     return btn;
 }
@@ -301,7 +301,7 @@ void page_system_create(lv_obj_t *tile)
     s_has_pmu = board_has_pmu();
 
     // Right column: controls.
-    s_sun_icon = ui_label(tile, &font_th_22, COLOR_TEXT, SYM_SUN);
+    s_sun_icon = ui_label(tile, &ui_font_th_22, COLOR_TEXT, SYM_SUN);
     lv_obj_set_pos(s_sun_icon, 372, 8);
 
     s_slider = lv_slider_create(tile);
@@ -349,7 +349,7 @@ void page_system_create(lv_obj_t *tile)
         lv_obj_set_style_bg_opa(s_bars[i], LV_OPA_COVER, 0);
         lv_obj_set_style_radius(s_bars[i], 1, 0);
     }
-    s_dbm.obj = ui_label(tile, &font_th_16, COLOR_TEXT_DIM, "—");
+    s_dbm.obj = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
     s_dbm.txt[0] = 0;
     lv_obj_set_pos(s_dbm.obj, 232, y0);
 

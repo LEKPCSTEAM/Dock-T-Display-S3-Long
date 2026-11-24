@@ -52,6 +52,8 @@ const char *ui_weather_text(uint16_t wmo_code);
 const char *ui_weather_icon(uint16_t wmo_code, bool is_day);
 lv_obj_t   *ui_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, const char *text);
 void        ui_strip_obj(lv_obj_t *obj);      // transparent, no border/padding/scroll
+// Moves an EEZ-generated screen's children into dst, then deletes the screen.
+void        ui_mount_screen(lv_obj_t *eez_screen, lv_obj_t *dst);
 
 // Implemented in ui.cpp.
 void ui_toast(const char *text);

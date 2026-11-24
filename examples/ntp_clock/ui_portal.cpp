@@ -79,8 +79,8 @@ static void overlay_create(const UiTick *t)
     lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(title_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(title_row, 10, 0);
-    ui_label(title_row, &font_th_22, t->accent, LV_SYMBOL_WIFI);
-    ui_label(title_row, &font_th_22, t->accent, "ตั้งค่า WiFi");
+    ui_label(title_row, &ui_font_th_22, t->accent, LV_SYMBOL_WIFI);
+    ui_label(title_row, &ui_font_th_22, t->accent, "ตั้งค่า WiFi");
 
     char buf[96];
     snprintf(buf, sizeof(buf), "1) สแกน QR หรือต่อ WiFi: %s", t->net->ap_ssid);
@@ -94,12 +94,12 @@ static void overlay_create(const UiTick *t)
     lv_obj_set_flex_flow(col, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(col, 4, 0);
     for (int i = 0; i < 3; i++) {
-        steps[i] = ui_label(col, &font_th_16, COLOR_TEXT, texts[i]);
+        steps[i] = ui_label(col, &ui_font_th_16, COLOR_TEXT, texts[i]);
         lv_label_set_long_mode(steps[i], LV_LABEL_LONG_WRAP);
         lv_obj_set_width(steps[i], MID_W);
     }
 
-    status_label = ui_label(overlay, &font_th_16, COLOR_TEXT_DIM, "");
+    status_label = ui_label(overlay, &ui_font_th_16, COLOR_TEXT_DIM, "");
     lv_obj_set_pos(status_label, MID_X, SCREEN_H - 34);
     client_shown = -1;
     set_status(t->net->portal_client);
@@ -108,7 +108,7 @@ static void overlay_create(const UiTick *t)
     lv_obj_t *url_frame = make_qr(overlay, QR_SMALL_SIZE, 526, 40, &qr_url);
     const char *url = "http://" CLOCK_PORTAL_IP;
     lv_qrcode_update(qr_url, url, strlen(url));
-    lv_obj_t *cap = ui_label(overlay, &font_th_16, COLOR_TEXT_DIM, "หน้าตั้งค่า");
+    lv_obj_t *cap = ui_label(overlay, &ui_font_th_16, COLOR_TEXT_DIM, "หน้าตั้งค่า");
     lv_obj_align_to(cap, url_frame, LV_ALIGN_OUT_BOTTOM_MID, 0, 4);
 
     close_btn = lv_btn_create(overlay);
@@ -117,7 +117,7 @@ static void overlay_create(const UiTick *t)
     lv_obj_set_style_bg_color(close_btn, COLOR_PANEL_HI, 0);
     lv_obj_set_style_radius(close_btn, 15, 0);
     lv_obj_set_style_shadow_width(close_btn, 0, 0);
-    lv_obj_t *x = ui_label(close_btn, &font_th_16, COLOR_TEXT, LV_SYMBOL_CLOSE);
+    lv_obj_t *x = ui_label(close_btn, &ui_font_th_16, COLOR_TEXT, LV_SYMBOL_CLOSE);
     lv_obj_center(x);
     lv_obj_add_event_cb(close_btn, close_cb, LV_EVENT_CLICKED, NULL);
 }

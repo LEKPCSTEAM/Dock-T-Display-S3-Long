@@ -158,13 +158,13 @@ void page_focus_create(lv_obj_t *tile)
     lv_obj_set_style_arc_color(s_arc, COLOR_PANEL, LV_PART_MAIN);
     lv_obj_set_style_arc_rounded(s_arc, true, LV_PART_INDICATOR);
 
-    s_icon = ui_label(s_arc, &font_th_32, COLOR_TEXT, SYM_BRAIN);
+    s_icon = ui_label(s_arc, &ui_font_th_32, COLOR_TEXT, SYM_BRAIN);
     lv_obj_center(s_icon);
 
-    s_time = ui_label(tile, &font_digits_56, COLOR_TEXT, "25:00");
+    s_time = ui_label(tile, &ui_font_digits_56, COLOR_TEXT, "25:00");
     lv_obj_set_pos(s_time, 214, 10);
 
-    s_mode = ui_label(tile, &font_th_22, COLOR_TEXT, MODE_NAME[MODE_FOCUS]);
+    s_mode = ui_label(tile, &ui_font_th_22, COLOR_TEXT, MODE_NAME[MODE_FOCUS]);
     lv_obj_set_pos(s_mode, 214, 68);
 
     for (int i = 0; i < DOT_COUNT; i++) {
@@ -172,7 +172,7 @@ void page_focus_create(lv_obj_t *tile)
     }
     paint_dots(COLOR_TEXT);
 
-    s_hint = ui_label(tile, &font_th_16, COLOR_TEXT_DIM, "แตะเพื่อเริ่ม/หยุด · กดค้างเพื่อรีเซ็ต");
+    s_hint = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "แตะเพื่อเริ่ม/หยุด · กดค้างเพื่อรีเซ็ต");
     lv_obj_set_pos(s_hint, 214, 140);
 }
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 128 px
  * Bpp: 4
- * Opts: --bpp 4 --no-compress --format lvgl --lv-include lvgl.h --font /private/tmp/claude-501/-Users-lek-WORK-MY-PROJECT-T-Display-S3-Long/4f403b1a-0832-4d72-abf4-16052c8f4e4f/scratchpad/fonts_dl/Kanit-Medium.ttf -r 0x30-0x3A --size 128 -o font_digits_128.c
+ * Opts: --bpp 4 --no-compress --format lvgl --lv-include lvgl.h --font /private/tmp/claude-501/-Users-lek-WORK-MY-PROJECT-T-Display-S3-Long/4f403b1a-0832-4d72-abf4-16052c8f4e4f/scratchpad/fonts_dl/Kanit-Medium.ttf -r 0x30-0x3A --size 128 -o ui_font_digits_128.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE
@@ -10,11 +10,11 @@
 #include "lvgl.h"
 #endif
 
-#ifndef FONT_DIGITS_128
-#define FONT_DIGITS_128 1
+#ifndef UI_FONT_DIGITS_128
+#define UI_FONT_DIGITS_128 1
 #endif
 
-#if FONT_DIGITS_128
+#if UI_FONT_DIGITS_128
 
 /*-----------------
  *    BITMAPS
@@ -3376,9 +3376,9 @@ static lv_font_fmt_txt_dsc_t font_dsc = {
 
 /*Initialize a public general font descriptor*/
 #if LVGL_VERSION_MAJOR >= 8
-const lv_font_t font_digits_128 = {
+const lv_font_t ui_font_digits_128 = {
 #else
-lv_font_t font_digits_128 = {
+lv_font_t ui_font_digits_128 = {
 #endif
     .get_glyph_dsc = lv_font_get_glyph_dsc_fmt_txt,    /*Function pointer to get glyph's data*/
     .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,    /*Function pointer to get glyph's bitmap*/
@@ -3400,5 +3400,5 @@ lv_font_t font_digits_128 = {
 
 
 
-#endif /*#if FONT_DIGITS_128*/
+#endif /*#if UI_FONT_DIGITS_128*/
 
