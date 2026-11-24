@@ -552,4 +552,21 @@ let hk1Hints = hints("Bash", hk1Input)!
         #expect(s.regionLines.first == "line 6")
         #expect(s.regionLines.last == "line 35")
     }
+
+    @Test func presenceNeedsOnlyTheNearestToolTitle() throws {
+        let commit = try #require(hints("Bash", commitInput))
+        let edit = try #require(hints("Edit", #"{"file_path":"/tmp/work/T-Display-S3-Long/src/main.cpp","new_string":"b","old_string":"a"}"#))
+        let midWord = try screenOf(promptF7)
+        #expect(!PermissionPromptMatcher.matches(midWord, commit, paneWidth: 63))
+        #expect(PermissionPromptMatcher.showsDialog(midWord, for: commit))
+        #expect(PermissionPromptMatcher.showsDialog(try screenOf(promptF6), for: hk1Hints))
+        #expect(PermissionPromptMatcher.showsDialog(try screenOf(promptF9), for: hk1Hints))
+        #expect(PermissionPromptMatcher.showsDialog(try screenOf(promptF3), for: edit))
+        #expect(!PermissionPromptMatcher.showsDialog(try screenOf(promptF3), for: hk1Hints))
+        #expect(!PermissionPromptMatcher.showsDialog(try screenOf(promptF1), for: edit))
+        let editBelowOldTitle = promptScreen([" Bash command", "   ls"]) + promptF3
+        #expect(!PermissionPromptMatcher.showsDialog(try screenOf(editBelowOldTitle), for: hk1Hints))
+        let untitled = promptScreen([promptRule, " Fetch", "   https://example.com", " ❯ 1. Yes", "   2. No"])
+        #expect(!PermissionPromptMatcher.showsDialog(try screenOf(untitled), for: hk1Hints))
+    }
 }

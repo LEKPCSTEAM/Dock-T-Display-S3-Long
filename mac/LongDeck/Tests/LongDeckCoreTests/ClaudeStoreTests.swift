@@ -77,6 +77,20 @@ private func json(_ body: String) throws -> [String: Any] {
         #expect(store.sessions[claudeA]?.pending?.request == "a3f9-1")
     }
 
+    @Test func postToolUseFailureClearsMatchedPrompt() {
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hk1, pane: "%37", at: at(0))
+        feed(&store, hookJSON(claudeA, "PostToolUseFailure", extra: #","tool_name":"Bash","tool_input":{"command":"ls"}"#), at: at(1))
+        #expect(store.sessions[claudeA]?.state == .permission)
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-1")
+        feed(&store, hk2f, at: at(2))
+        #expect(store.sessions[claudeA]?.pending == nil)
+        #expect(store.sessions[claudeA]?.state == .working)
+        feed(&store, hookJSON(claudeA, "Stop"), at: at(3))
+        feed(&store, hk2f, at: at(4))
+        #expect(store.sessions[claudeA]?.state == .working)
+    }
+
     @Test func eachPermissionRequestGetsNewId() {
         var store = ClaudeStore(runTag: "a3f9")
         feed(&store, hk1, at: at(0))

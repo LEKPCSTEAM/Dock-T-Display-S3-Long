@@ -47,11 +47,13 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 
 ### Claude Code
 
-ต้อง Install integration จากเมนูแอป Mac ก่อน (ดู `mac/LongDeck/README.md`) แล้วหน้า `Claude` จะมี 2 widget
+ต้อง Install integration จากเมนูแอป Mac ก่อน (ดู `mac/LongDeck/README.md`) แอปจะเพิ่ม command hook 9 event (รวม `PostToolUseFailure`) ลง `~/.claude/settings.json` ซึ่งเรียก `~/Library/Application Support/LongDeck/hook.sh` script นี้ส่ง event ให้แอปแบบ background ไม่พิมพ์อะไรออกมา และ exit 0 เสมอ ถ้าแอปไม่ได้เปิด Claude Code ก็ทำงานปกติ ไม่มี hook error หลัง Install และหลัง Uninstall ให้ restart session ของ Claude Code ที่เปิดค้างไว้
+
+หน้า `Claude` มี 2 widget
 
 - `claude_sessions` — แถวละ session: จุดสี accent = working, เหลือง = รอ permission, เขียว = waiting (เสร็จแล้วรอ prompt), เทา = อื่น ๆ ถ้าเกินจำนวนแถวจะขึ้น `+N more`
 - `claude_usage` — 5h / 7d เป็น % พร้อม countdown reset: bar สี accent ปกติ, เหลืองเมื่อ ≥ 80%, แดงเมื่อ ≥ 95%
-- Mac offline หรือยังไม่ Install: ทั้งสอง widget แสดง `--`
+- Mac offline, ยังไม่ Install หรือ listener ของแอปยังไม่ทำงาน: ทั้งสอง widget แสดง `--` (หลัง Uninstall หรือ listener ล่ม จะขึ้น `No sessions` จนกว่าบอร์ดจะ reconnect)
 
 แตะแถว session = focus หน้าต่าง iTerm2/tmux ของ session นั้น, กดค้างแถวที่กำลัง working = interrupt (Escape ส่งเฉพาะตอนจอ Claude Code ขึ้น `esc to interrupt`)
 
@@ -62,6 +64,7 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 - รองรับเฉพาะ prompt ของ Bash / Edit / MultiEdit / Write / Read
 - Always มีเฉพาะ Bash ที่เป็นบรรทัดเดียว ไม่เกิน 55 bytes ไม่มี shell operator และ rule ที่ Claude Code จะบันทึกต้องเท่ากับคำสั่งทั้งบรรทัด — Edit/Write/Read ไม่ส่ง Always จากบอร์ด
 - คำสั่งยาวที่ wrap หลายบรรทัดมักถูกปฏิเสธ ให้ตอบที่คีย์บอร์ด
+- overlay ยังค้างอยู่ตราบที่ pane มี dialog ของ tool เดียวกัน (เช็กทุก 1 วินาที) แม้ verify ไม่ผ่านจนตอบจากบอร์ดไม่ได้
 
 ยกเลิกการจับคู่ Mac: กดปุ่ม forget ในเว็บตั้งค่า หรือ
 

@@ -175,6 +175,12 @@ public enum PermissionPromptMatcher {
         }
     }
 
+    // Loose presence for the 1 Hz check only; never for answering.
+    public static func showsDialog(_ screen: PromptScreen, for hints: PromptHints) -> Bool {
+        guard let title = screen.regionLines.last(where: { knownTitles.contains($0) }) else { return false }
+        return hints.titles.contains(title)
+    }
+
     static func interruptHintVisible(_ screen: String) -> Bool {
         let tail = Array(screen.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
             .map { normalised(rightTrimmed($0)) }.filter { !$0.isEmpty }.suffix(interruptWindow))

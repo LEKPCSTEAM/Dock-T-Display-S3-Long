@@ -281,15 +281,33 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
         #expect(responder(tmux).handle(act(.approve), target: unambiguous) == okAck)
     }
 
-    @Test func promptVisibleForTargetNeedsItsOwnDialog() {
+    @Test func promptVisibleForTargetNeedsItsToolsDialog() {
         #expect(responder(FakeTmux(capture: promptF1)).promptVisible(pane: "%37", target: target()))
-        #expect(!responder(FakeTmux(capture: promptF6)).promptVisible(pane: "%37", target: target()))
+        #expect(responder(FakeTmux(capture: promptF6)).promptVisible(pane: "%37", target: target()))
+        #expect(!responder(FakeTmux(capture: promptF3)).promptVisible(pane: "%37", target: target()))
+        #expect(!responder(FakeTmux(capture: promptF4)).promptVisible(pane: "%37", target: target()))
         #expect(!responder(FakeTmux(capture: promptF5)).promptVisible(pane: "%37", target: target()))
         #expect(responder(FakeTmux(capture: promptF6)).promptVisible(pane: "%37", target: target(tool: "WebFetch")))
         let broken = FakeTmux(capture: promptF1)
         broken.failing = ["display-message"]
         #expect(!responder(broken).promptVisible(pane: "%37", target: target()))
         #expect(!responder(FakeTmux(capture: promptF1)).promptVisible(pane: "%3a", target: target()))
+    }
+
+    @Test func longWrappedDialogStaysPresentButIsNotAnswered() {
+        let command = "cat /tmp/" + String(repeating: "abcdefghij", count: 20) + "/build.log"
+        let chars = Array(command)
+        let rows = stride(from: 0, to: chars.count, by: 57).map { String(chars[$0..<min($0 + 57, chars.count)]) }
+        #expect(rows.count == 4)
+        let tmux = FakeTmux(capture: bashDialog(rows + ["Show the log"]))
+        tmux.outputs["display-message"] = paneReply("2.1.331", width: "61")
+        let long = target(input: bashInput(command, "Show the log"))
+        #expect(responder(tmux).promptVisible(pane: "%37", target: long))
+        for action in [ClaudeActionKind.approve, .always, .deny] {
+            #expect(!responder(tmux).handle(act(action), target: long).ok)
+        }
+        #expect(responder(tmux).handle(act(.approve), target: long) == refused("mismatch"))
+        #expect(tmux.keys.isEmpty)
     }
 
     @Test func alwaysRefusedForMultiLineOrCompoundBash() {

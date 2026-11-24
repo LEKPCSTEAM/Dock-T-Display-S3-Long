@@ -83,7 +83,7 @@ public struct ClaudeStore: Sendable {
                                              seenOnScreen: false, misses: 0))
             }
             set(&s, .permission, now)
-        case "PostToolUse":
+        case "PostToolUse", "PostToolUseFailure":
             if s.queue.isEmpty {
                 set(&s, .working, now)
             } else if let i = s.queue.firstIndex(where: {

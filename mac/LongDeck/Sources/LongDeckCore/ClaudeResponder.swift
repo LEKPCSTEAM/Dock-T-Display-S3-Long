@@ -152,13 +152,13 @@ public struct ClaudeResponder: Sendable {
         return PermissionPromptMatcher.parse(shot) != nil
     }
 
-    // True only while this target's own dialog is on screen.
+    // True while a dialog titled for this target's tool is on screen.
     public func promptVisible(pane: String, target: ClaudeTarget) -> Bool {
-        guard let pane = Self.validPane(pane), let info = paneInfo(pane), let shot = capture(pane),
+        guard let pane = Self.validPane(pane), paneInfo(pane) != nil, let shot = capture(pane),
               let screen = PermissionPromptMatcher.parse(shot) else { return false }
         guard let tool = target.toolName, let input = target.toolInputJSON,
               let hints = PromptHints.from(toolName: tool, toolInputJSON: input, cwd: target.cwd) else { return true }
-        return PermissionPromptMatcher.matches(screen, hints, paneWidth: info.width)
+        return PermissionPromptMatcher.showsDialog(screen, for: hints)
     }
 
     private func answer(_ action: ClaudeActionKind, _ target: ClaudeTarget, _ pane: String, width: Int) -> String {

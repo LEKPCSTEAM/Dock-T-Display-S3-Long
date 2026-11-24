@@ -10,9 +10,11 @@ final class ClaudeController: ObservableObject {
 
     var onBody: ((String) -> Void)?
     private(set) var currentBody = ""
+    private static let emptyBody = #"{"prompt":null,"sessions":[],"usage":{"five_hour":null,"seven_day":null}}"#
 
     private var store = ClaudeStore(runTag: String(UUID().uuidString.prefix(4)).lowercased())
     private var listener: ClaudeListener?
+    private var listening = false
     private var listenerError: String?
     private var timer: Timer?
     private var lastPublished: String?
@@ -58,7 +60,8 @@ final class ClaudeController: ObservableObject {
         let paths = Self.livePaths()
         let alert = NSAlert()
         alert.messageText = "Install Claude Code integration"
-        alert.informativeText = "LongDeck will add HTTP hooks to ~/.claude/settings.json next to your existing hooks, "
+        alert.informativeText = "LongDeck will add command hooks to ~/.claude/settings.json next to your existing hooks "
+            + "(they run a small script that only reports events), "
             + "and run your status line (\(Self.currentStatusLine(paths.settings))) through a small wrapper. "
             + "A backup is saved next to the file. Restart running Claude Code sessions afterwards."
         alert.addButton(withTitle: "Install")
@@ -84,7 +87,9 @@ final class ClaudeController: ObservableObject {
     func uninstall() {
         let alert = NSAlert()
         alert.messageText = "Uninstall Claude Code integration"
-        alert.informativeText = "LongDeck will remove its hooks and restore your status line."
+        alert.informativeText = "LongDeck will remove its hooks and restore your status line. "
+            + "Restart running Claude Code sessions afterwards: until then they keep calling the removed hook script "
+            + "and may show hook errors."
         alert.addButton(withTitle: "Uninstall")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
@@ -97,6 +102,7 @@ final class ClaudeController: ObservableObject {
         }
         listener?.stop()
         listener = nil
+        listening = false
         listenerToken = nil
         retryTask?.cancel()
         listenerError = nil
@@ -159,7 +165,8 @@ final class ClaudeController: ObservableObject {
             switch result {
             case .success:
                 listenerError = nil
-                refreshStatus()
+                listening = true
+                publish()
             case .failure:
                 listenerFailed(l)
             }
@@ -175,7 +182,8 @@ final class ClaudeController: ObservableObject {
     private func listenerFailed(_ failed: ClaudeListener?) {
         guard failed === listener else { return }
         listenerError = "Claude: listener failed (port \(ClaudeInstaller.port) busy?)"
-        refreshStatus()
+        listening = false
+        publish()
         retryTask?.cancel()
         retryTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(5))
@@ -214,9 +222,19 @@ final class ClaudeController: ObservableObject {
         publish()
     }
 
+    // No body until hooks can arrive: the board shows "--" then.
     private func publish() {
-        currentBody = store.body(now: Date())
         refreshStatus()
+        guard installed, listening else {
+            currentBody = ""
+            // The board keeps a sent body until it relinks; blank it once.
+            if lastPublished != nil {
+                lastPublished = nil
+                onBody?(Self.emptyBody)
+            }
+            return
+        }
+        currentBody = store.body(now: Date())
         guard currentBody != lastPublished else { return }
         lastPublished = currentBody
         onBody?(currentBody)

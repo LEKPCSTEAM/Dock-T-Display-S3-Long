@@ -10,6 +10,7 @@ public struct ClaudeInstallPaths: Sendable {
     }
 
     var wrapper: URL { supportDir.appendingPathComponent("statusline.sh") }
+    var hookScript: URL { supportDir.appendingPathComponent("hook.sh") }
     var stateFile: URL { supportDir.appendingPathComponent("claude-install.json") }
 }
 
@@ -33,7 +34,7 @@ public enum ClaudeInstallError: Error, Equatable {
 public enum ClaudeInstaller {
     public static let port = 47821
     public static let hookEvents = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-                                    "PermissionRequest", "Notification", "Stop", "SessionEnd"]
+                                    "PostToolUseFailure", "PermissionRequest", "Notification", "Stop", "SessionEnd"]
 
     private static let urlPrefix = "http://127.0.0.1:\(port)/"
 
@@ -77,10 +78,11 @@ public enum ClaudeInstaller {
         case .object?: hooks = root["hooks"]!
         default: throw ClaudeInstallError.settingsUnreadable("hooks is not an object")
         }
-        hooks = try stripLongDeckGroups(hooks)
+        let hookCommand = StatusLineWrapper.shellQuote(paths.hookScript.path)
+        hooks = try stripLongDeckGroups(hooks, hookCommand: hookCommand)
 
         var createdEvents: [String] = []
-        let group = try hookGroup(token: token)
+        let group = try hookGroup(command: hookCommand)
         for name in hookEvents {
             var arr: [JSONValue]
             switch hooks[name] {
@@ -115,9 +117,11 @@ public enum ClaudeInstaller {
         }
 
         let script = StatusLineWrapper.script(previousCommand: previousCommand, url: urlPrefix + "statusline", token: token)
+        let hookScript = ClaudeHookScript.script(url: urlPrefix + "hook", token: token)
         do {
             try fm.createDirectory(at: paths.supportDir, withIntermediateDirectories: true)
             try writeFile(Data(script.utf8), to: paths.wrapper, mode: 0o700)
+            try writeFile(Data(hookScript.utf8), to: paths.hookScript, mode: 0o700)
         } catch { throw ClaudeInstallError.writeFailed("\(error)") }
 
         let mode = existed ? try fileMode(settingsURL) : 0o600
@@ -153,7 +157,8 @@ public enum ClaudeInstaller {
             _ = try writeBackup(data, of: settingsURL, now: now)
 
             if let hooks = root["hooks"], case .object(let members) = hooks {
-                var stripped = try stripLongDeckGroups(hooks)
+                var stripped = try stripLongDeckGroups(
+                    hooks, hookCommand: StatusLineWrapper.shellQuote(paths.hookScript.path))
                 for m in members {
                     if case .array(let a)? = stripped[m.key], a.isEmpty, state.createdEvents.contains(m.key) {
                         stripped = stripped.removing(m.key)
@@ -184,28 +189,31 @@ public enum ClaudeInstaller {
         }
 
         try? fm.removeItem(at: paths.wrapper)
+        try? fm.removeItem(at: paths.hookScript)
         do { try fm.removeItem(at: paths.stateFile) } catch { throw ClaudeInstallError.writeFailed("\(error)") }
     }
 
-    private static func hookGroup(token: String) throws -> JSONValue {
-        let text = "{\"hooks\":[{\"type\":\"http\",\"url\":\(JSONText.compact(.string(urlPrefix + "hook"))),\"headers\":{\"X-LongDeck-Token\":\(JSONText.compact(.string(token))),\"X-Tmux-Pane\":\"$TMUX_PANE\"},\"allowedEnvVars\":[\"TMUX_PANE\"],\"timeout\":2,\"onFailure\":\"continue\"}]}"
+    private static func hookGroup(command: String) throws -> JSONValue {
+        let text = "{\"hooks\":[{\"type\":\"command\",\"command\":\(JSONText.compact(.string(command))),\"timeout\":2,\"onFailure\":\"continue\"}]}"
         return try JSONText.parse(Data(text.utf8))
     }
 
-    private static func isLongDeckGroup(_ g: JSONValue) -> Bool {
+    private static func isLongDeckGroup(_ g: JSONValue, hookCommand: String) -> Bool {
         guard case .array(let hs)? = g["hooks"] else { return false }
         return hs.contains { h in
+            if h["type"] == .string("command") { return h["command"] == .string(hookCommand) }
+            // Earlier builds installed http hooks.
             guard h["type"] == .string("http"), case .string(let u)? = h["url"], u.hasPrefix(urlPrefix),
                   case .object? = h["headers"], h["headers"]?["X-LongDeck-Token"] != nil else { return false }
             return true
         }
     }
 
-    private static func stripLongDeckGroups(_ hooks: JSONValue) throws -> JSONValue {
+    private static func stripLongDeckGroups(_ hooks: JSONValue, hookCommand: String) throws -> JSONValue {
         guard case .object(let members) = hooks else { return hooks }
         return .object(members.map { m in
             guard case .array(let a) = m.value else { return m }
-            return JSONMember(key: m.key, value: .array(a.filter { !isLongDeckGroup($0) }))
+            return JSONMember(key: m.key, value: .array(a.filter { !isLongDeckGroup($0, hookCommand: hookCommand) }))
         })
     }
 

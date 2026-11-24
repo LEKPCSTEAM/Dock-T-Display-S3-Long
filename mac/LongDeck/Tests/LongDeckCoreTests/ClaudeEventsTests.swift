@@ -15,6 +15,8 @@ let hk0 = hookJSON(claudeA, "SessionStart", extra: #","source":"startup""#)
 let hkB = hookJSON(claudeB, "UserPromptSubmit", cwd: "/tmp/work/caltera", extra: #","prompt":"hi""#)
 let hk1 = hookJSON(claudeA, "PermissionRequest", extra: hk1Extra)
 let hk2 = hookJSON(claudeA, "PostToolUse", extra: hk1Extra + #","tool_response":{"stdout":"ok"}"#)
+let hk2f = hookJSON(claudeA, "PostToolUseFailure",
+                    extra: hk1Extra + #","tool_use_id":"toolu_01","error":"Exit code 1","is_interrupt":false"#)
 let hk3 = hookJSON(claudeA, "Notification", extra: #","notification_type":"idle_prompt""#)
 let hk4 = hookJSON(claudeA, "Notification", extra: #","notification_type":"permission_prompt""#)
 
@@ -29,6 +31,13 @@ let sl1 = Data(#"{"session_id":"\#(claudeA)","cwd":"\#(claudeCwd)","model":{"id"
         #expect(e.toolName == "Bash")
         #expect(e.toolInputJSON == #"{"command":"pio run -e ntp_clock","description":"Build firmware"}"#)
         #expect(e.cwd == claudeCwd)
+    }
+
+    @Test func hookDecodeReadsPostToolUseFailure() throws {
+        let e = try #require(ClaudeHookEvent.decode(hk2f))
+        #expect(e.event == "PostToolUseFailure")
+        #expect(e.toolName == "Bash")
+        #expect(e.toolInputJSON == ClaudeHookEvent.decode(hk1)?.toolInputJSON)
     }
 
     @Test func hookDecodeReadsNotificationType() throws {
