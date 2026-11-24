@@ -30,6 +30,9 @@ final class AppModel: ObservableObject {
 
     let discovery = Discovery()
     let system = RealSystemControl()
+    let volume = CoreAudioVolume()
+    private var sampler = StatsSampler(source: MacStatsSource())
+    private var statsTimer: Timer?
 
     static let configURL = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -57,6 +60,29 @@ final class AppModel: ObservableObject {
         }
         discovery.onChange = { [weak self] in self?.connectIfPossible() }
         discovery.start()
+        volume.onChange = { [weak self] in
+            guard let self else { return }
+            self.connection?.sendVolume(self.volume.read())
+        }
+        volume.start()
+        startStatsTimer()
+    }
+
+    private func startStatsTimer() {
+        guard statsTimer == nil else { return }
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.sendStatsTick() }
+        }
+    }
+
+    private func stopStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+    }
+
+    private func sendStatsTick() {
+        guard let connection, connection.isReady else { return }
+        connection.sendStats(sampler.sample(now: ProcessInfo.processInfo.systemUptime))
     }
 
     private func refreshTrust() {
@@ -89,6 +115,7 @@ final class AppModel: ObservableObject {
         }
         center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in
+                self?.startStatsTimer()
                 self?.policy.reset()
                 self?.scheduleRetry()
             }
@@ -96,6 +123,7 @@ final class AppModel: ObservableObject {
     }
 
     private func dropConnection() {
+        stopStatsTimer()
         retryTask?.cancel()
         connection?.close()
         connection = nil
@@ -155,7 +183,7 @@ final class AppModel: ObservableObject {
         status = pairing ? .pairing : .connecting
         let conn = DeckConnection(
             board: board, pairing: pairing, runner: ActionRunner(system: system),
-            configProvider: { [weak self] in self?.config },
+            configProvider: { [weak self] in self?.config }, volume: volume,
             onEvent: { [weak self] event in self?.handle(event, from: board) }
         )
         connection = conn

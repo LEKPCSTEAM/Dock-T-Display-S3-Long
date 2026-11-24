@@ -19,7 +19,10 @@ final class DeckConnection {
     private let runner: ActionRunner
     private let configProvider: () -> DeckConfig?
     private let onEvent: (ConnectionEvent) -> Void
+    private let volume: VolumeControl
 
+    private var link = LiveLink()
+    private var pushGeneration = 0
     private var handshake: DeckHandshake
     private var task: URLSessionWebSocketTask?
     private var sealer: FrameSealer?
@@ -35,9 +38,10 @@ final class DeckConnection {
 
     init(
         board: DiscoveredBoard, pairing: Bool, runner: ActionRunner,
-        configProvider: @escaping () -> DeckConfig?,
+        configProvider: @escaping () -> DeckConfig?, volume: VolumeControl,
         onEvent: @escaping (ConnectionEvent) -> Void
     ) {
+        self.volume = volume
         self.board = board
         self.pairing = pairing
         self.runner = runner
@@ -73,6 +77,23 @@ final class DeckConnection {
 
     func submitPairCode(_ code: String) {
         handle(handshake.submitPairCode(code))
+    }
+
+    var isReady: Bool { sealer != nil && !closed }
+
+    func sendStats(_ sample: StatsSample) {
+        if let frame = link.statsFrame(body: sample.jsonBody) { sendFrame(frame) }
+    }
+
+    func sendVolume(_ state: VolumeState) {
+        if let frame = link.volumeFrame(body: state.jsonBody) { sendFrame(frame) }
+    }
+
+    private func sendFrame(_ f: OutFrame) {
+        guard !closed, var sealer, let task else { return }
+        let text = sealer.seal(type: f.type, body: f.body)
+        self.sealer = sealer
+        task.send(.string(text)) { _ in }
     }
 
     func push(config: DeckConfig) {
@@ -155,6 +176,8 @@ final class DeckConnection {
             case .ready(let sessionKey, let boardId):
                 sealer = FrameSealer(sessionKey: sessionKey)
                 opener = FrameOpener(sessionKey: sessionKey)
+                link.reset()
+                sendVolume(volume.read())
                 onEvent(.ready(boardId: boardId))
             case .failed(let reason):
                 if reason == "code" {
@@ -178,18 +201,34 @@ final class DeckConnection {
         case "hello_state":
             boardHash = obj["hash"] as? String ?? ""
             if let config = configProvider() { push(config: config) }
-        case "press":
-            guard let id = obj["id"] as? String, let kind = obj["kind"] as? String else { return }
+        case "slider", "press":
             guard let config = configProvider() else { return }
+            if let command = LiveLink.command(type: frame.type, body: frame.body, config: config) {
+                return run(command)
+            }
+            guard frame.type == "press", let id = obj["id"] as? String, let kind = obj["kind"] as? String else { return }
             do {
                 try runner.handlePress(id: id, kind: kind, config: config)
             } catch {
                 onEvent(.actionFailed(Self.describe(error)))
             }
         case "page":
-            onEvent(.pageChanged(obj["index"] as? Int ?? -1))
+            let index = obj["index"] as? Int ?? -1
+            link.pageChanged(index)
+            onEvent(.pageChanged(index))
         default:
             break
+        }
+    }
+
+    private func run(_ command: LiveCommand) {
+        do {
+            switch command {
+            case .setVolume(let n): try volume.setLevelUnmuting(n)
+            case .toggleMute: try volume.toggleMute()
+            }
+        } catch {
+            onEvent(.actionFailed("Volume: \(Self.describe(error))"))
         }
     }
 
@@ -205,6 +244,9 @@ final class DeckConnection {
         self.sealer = sealer
         boardHash = built.hash
         pushTask?.cancel()
+        link.pushStarted()
+        pushGeneration += 1
+        let generation = pushGeneration
         pushTask = Task { @MainActor [weak self] in
             guard await Self.send(.string(layout), on: task) else { return self?.finish("send failed") ?? () }
             for id in built.faces.keys.sorted() {
@@ -216,6 +258,8 @@ final class DeckConnection {
                     guard await Self.send(.data(chunk), on: task) else { return self.finish("send failed") }
                 }
             }
+            guard let self, !Task.isCancelled, !self.closed, self.pushGeneration == generation else { return }
+            if let held = self.link.pushFinished() { self.sendFrame(held) }
         }
     }
 
