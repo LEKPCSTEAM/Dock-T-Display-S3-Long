@@ -90,4 +90,93 @@ private func tempURL() -> URL {
         try bad.save(to: url)
         #expect(throws: DeckConfigError.self) { try DeckConfig.load(from: url) }
     }
+
+    @Test func liveWidgetJSONIsFlat() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let cpu = LiveWidgetConfig(id: "cpu", col: 0, row: 0, w: 2, h: 1, kind: .stat(.cpu, .sparkline))
+        let vol = LiveWidgetConfig(id: "vol", col: 2, row: 0, w: 3, h: 1, kind: .volume)
+        let cpuJSON = String(decoding: try encoder.encode(cpu), as: UTF8.self)
+        let volJSON = String(decoding: try encoder.encode(vol), as: UTF8.self)
+        #expect(cpuJSON == #"{"col":0,"h":1,"id":"cpu","metric":"cpu","row":0,"style":"sparkline","type":"stat","w":2}"#)
+        #expect(volJSON == #"{"col":2,"h":1,"id":"vol","row":0,"type":"volume","w":3}"#)
+        #expect(try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(cpuJSON.utf8)) == cpu)
+        #expect(try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(volJSON.utf8)) == vol)
+    }
+
+    @Test func liveWidgetDecodeRejectsBadInput() {
+        let bad = [
+            #"{"col":0,"h":1,"id":"a","row":0,"type":"gauge","w":1}"#,
+            #"{"col":0,"h":1,"id":"a","metric":"cpu","row":0,"type":"stat","w":1}"#,
+            #"{"col":0,"h":1,"id":"a","metric":"fan","row":0,"style":"bar","type":"stat","w":1}"#,
+        ]
+        for json in bad {
+            #expect(throws: DecodingError.self) {
+                try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(json.utf8))
+            }
+        }
+    }
+
+    @Test func m1ConfigLoadsUnchanged() throws {
+        let data = try JSONEncoder().encode(SampleConfig.dev)
+        var root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var pages = try #require(root["pages"] as? [[String: Any]])
+        for i in pages.indices { pages[i].removeValue(forKey: "live") }
+        root["pages"] = pages
+        let m1 = try JSONSerialization.data(withJSONObject: root)
+        let decoded = try JSONDecoder().decode(DeckConfig.self, from: m1)
+        var expected = SampleConfig.dev
+        for i in expected.pages.indices { expected.pages[i].live = [] }
+        #expect(decoded == expected)
+        let built = LayoutBuilder.build(decoded, render: { _ in Data() })
+        let root2 = try #require(JSONSerialization.jsonObject(with: Data(built.json.utf8)) as? [String: Any])
+        let dev = try #require((root2["pages"] as? [[String: Any]])?.first)
+        let widgets = try #require(dev["widgets"] as? [[String: Any]])
+        #expect(widgets.count == 16)
+        #expect(widgets.allSatisfy { $0["type"] as? String == "key" })
+        #expect(widgets.map { $0["face"] as? Int } == (1...16).map { $0 })
+    }
+
+    @Test func validationCoversLiveWidgets() throws {
+        func live(_ id: String, _ col: Int, _ row: Int = 0, w: Int = 1) -> LiveWidgetConfig {
+            LiveWidgetConfig(id: id, col: col, row: row, w: w, h: 1, kind: .clock)
+        }
+        func cfg(keys: [KeyConfig] = [], live: [LiveWidgetConfig]) -> DeckConfig {
+            DeckConfig(version: 1, pages: [PageConfig(name: "P", keys: keys, live: live)])
+        }
+        #expect(throws: DeckConfigError.self) { try cfg(live: [live("a", 7, w: 2)]).validate() }
+        #expect(throws: DeckConfigError.self) { try cfg(keys: [key("k", 0, 0)], live: [live("a", 0)]).validate() }
+        let twoPages = DeckConfig(version: 1, pages: [
+            PageConfig(name: "A", keys: [key("x", 0, 0)]),
+            PageConfig(name: "B", keys: [], live: [live("x", 0)]),
+        ])
+        #expect(throws: DeckConfigError.self) { try twoPages.validate() }
+        let longID = String(repeating: "a", count: 16)
+        #expect(throws: DeckConfigError.self) { try cfg(live: [live(longID, 0)]).validate() }
+        func mixed(keys n: Int, live m: Int) -> DeckConfig {
+            let ks = (0..<n).map { key("k\($0)", $0 % 8, $0 / 8) }
+            let ls = (0..<m).map { live("l\($0)", ($0 + n) % 8, ($0 + n) / 8) }
+            return cfg(keys: ks, live: ls)
+        }
+        #expect(throws: DeckConfigError.self) { try mixed(keys: 10, live: 7).validate() }
+        try mixed(keys: 10, live: 6).validate()
+    }
+
+    @Test func sampleMacPageHasEveryLiveKind() throws {
+        let mac = try #require(SampleConfig.dev.pages.first { $0.name == "Mac" })
+        var metrics = Set<StatMetric>()
+        var styles = Set<StatStyle>()
+        var volume = false, clock = false
+        for w in mac.live {
+            switch w.kind {
+            case .stat(let m, let s): metrics.insert(m); styles.insert(s)
+            case .volume: volume = true
+            case .clock: clock = true
+            }
+        }
+        #expect(volume && clock)
+        #expect(styles == Set(StatStyle.allCases))
+        #expect(metrics == Set(StatMetric.allCases).subtracting([.battery]))
+        try SampleConfig.dev.validate()
+    }
 }

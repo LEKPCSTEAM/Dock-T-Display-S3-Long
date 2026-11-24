@@ -24,6 +24,20 @@ public enum LayoutBuilder {
                 ])
                 nextFace += 1
             }
+            for l in page.live {
+                var widget: [String: Any] = [
+                    "id": l.id, "col": l.col, "row": l.row, "w": l.w, "h": l.h, "face": 0,
+                ]
+                switch l.kind {
+                case .stat(let metric, let style):
+                    widget["type"] = "stat"
+                    widget["metric"] = metric.rawValue
+                    widget["style"] = style.rawValue
+                case .volume: widget["type"] = "volume"
+                case .clock: widget["type"] = "clock"
+                }
+                widgets.append(widget)
+            }
             pages.append(["name": page.name, "widgets": widgets])
         }
 

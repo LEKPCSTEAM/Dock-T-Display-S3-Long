@@ -17,6 +17,20 @@ private func stubRender(_ key: KeyConfig) -> Data {
     Data(repeating: UInt8(truncatingIfNeeded: key.label.utf8.first ?? 0), count: 3)
 }
 
+let liveL1 = #"{"hash":"0123456789abcdef","pages":[{"name":"Mac","widgets":[{"col":7,"face":1,"h":1,"id":"k1","long":false,"row":0,"type":"key","w":1},{"col":0,"face":0,"h":1,"id":"cpu","metric":"cpu","row":0,"style":"sparkline","type":"stat","w":2},{"col":2,"face":0,"h":1,"id":"vol","row":0,"type":"volume","w":3},{"col":5,"face":0,"h":1,"id":"clk","row":0,"type":"clock","w":2},{"col":0,"face":0,"h":1,"id":"tmp","metric":"temp","row":1,"style":"number","type":"stat","w":1}]}]}"#
+
+func liveConfig() -> DeckConfig {
+    let k1 = KeyConfig(id: "k1", col: 7, row: 0, w: 1, h: 1, label: "K", icon: nil,
+                       background: "#222222", action: .shell("true"), longAction: nil)
+    let live = [
+        LiveWidgetConfig(id: "cpu", col: 0, row: 0, w: 2, h: 1, kind: .stat(.cpu, .sparkline)),
+        LiveWidgetConfig(id: "vol", col: 2, row: 0, w: 3, h: 1, kind: .volume),
+        LiveWidgetConfig(id: "clk", col: 5, row: 0, w: 2, h: 1, kind: .clock),
+        LiveWidgetConfig(id: "tmp", col: 0, row: 1, w: 1, h: 1, kind: .stat(.temp, .number)),
+    ]
+    return DeckConfig(version: 1, pages: [PageConfig(name: "Mac", keys: [k1], live: live)])
+}
+
 @Suite struct LayoutBuilderTests {
     @Test func assignsFaceIdsAndHasLong() throws {
         let built = LayoutBuilder.build(config(), render: stubRender)
@@ -40,6 +54,28 @@ private func stubRender(_ key: KeyConfig) -> Data {
         #expect(a1.hash == a2.hash)
         #expect(a1.hash != b.hash)
         #expect(a1.hash.count == 16)
+    }
+
+    @Test func liveLayoutMatchesSharedExample() {
+        let built = LayoutBuilder.build(liveConfig(), render: stubRender)
+        let json = built.json.replacingOccurrences(of: built.hash, with: "0123456789abcdef")
+        #expect(json == liveL1)
+        #expect(Set(built.faces.keys) == [1])
+    }
+
+    @Test func liveWidgetsChangeHash() {
+        var withClock = liveConfig()
+        withClock.pages[0].live.append(
+            LiveWidgetConfig(id: "clk2", col: 5, row: 1, w: 2, h: 1, kind: .clock))
+        #expect(LayoutBuilder.build(liveConfig(), render: stubRender).hash
+                != LayoutBuilder.build(withClock, render: stubRender).hash)
+    }
+
+    @Test func sampleLayoutFrameFitsBoard() {
+        var sealer = FrameSealer(sessionKey: Data(count: 32))
+        let frame = sealer.seal(
+            type: "layout", body: LayoutBuilder.build(SampleConfig.dev, render: stubRender).json)
+        #expect(LayoutPushPolicy.fits(frameBytes: frame.utf8.count))
     }
 
     @Test func outputParsesAsBoardSchema() throws {

@@ -36,6 +36,24 @@ public enum SampleConfig {
                 .openApp(path: "/System/Library/CoreServices/Finder.app"),
                 long: .openURL("file:///Applications")),
         ]
-        return DeckConfig(version: 1, pages: [PageConfig(name: "Dev", keys: keys)])
+        func live(_ id: String, _ col: Int, _ row: Int, _ w: Int, _ kind: LiveKind) -> LiveWidgetConfig {
+            LiveWidgetConfig(id: id, col: col, row: row, w: w, h: 1, kind: kind)
+        }
+        let macLive = [
+            live("cpu", 0, 0, 2, .stat(.cpu, .sparkline)),
+            live("gpu", 2, 0, 2, .stat(.gpu, .sparkline)),
+            live("ram", 4, 0, 2, .stat(.ram, .bar)),
+            live("clock", 6, 0, 2, .clock),
+            live("temp", 0, 1, 1, .stat(.temp, .number)),
+            live("netdown", 1, 1, 1, .stat(.netDown, .number)),
+            live("netup", 2, 1, 1, .stat(.netUp, .number)),
+            live("diskio", 3, 1, 1, .stat(.diskIO, .sparkline)),
+            live("diskfree", 4, 1, 1, .stat(.diskFree, .bar)),
+            live("volume", 5, 1, 3, .volume),
+        ]
+        return DeckConfig(version: 1, pages: [
+            PageConfig(name: "Dev", keys: keys),
+            PageConfig(name: "Mac", keys: [], live: macLive),
+        ])
     }()
 }

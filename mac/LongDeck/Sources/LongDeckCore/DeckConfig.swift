@@ -47,13 +47,95 @@ public struct KeyConfig: Codable, Equatable, Sendable {
     }
 }
 
+public enum StatMetric: String, Codable, CaseIterable, Sendable {
+    case cpu, ram, gpu, temp
+    case netDown = "net_down"
+    case netUp = "net_up"
+    case diskFree = "disk_free"
+    case diskIO = "disk_io"
+    case battery
+}
+
+public enum StatStyle: String, Codable, CaseIterable, Sendable { case bar, number, sparkline }
+
+public enum LiveKind: Equatable, Sendable {
+    case stat(StatMetric, StatStyle)
+    case volume
+    case clock
+}
+
+public struct LiveWidgetConfig: Codable, Equatable, Sendable {
+    public var id: String
+    public var col: Int
+    public var row: Int
+    public var w: Int
+    public var h: Int
+    public var kind: LiveKind
+
+    public init(id: String, col: Int, row: Int, w: Int, h: Int, kind: LiveKind) {
+        self.id = id
+        self.col = col
+        self.row = row
+        self.w = w
+        self.h = h
+        self.kind = kind
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, type, metric, style, col, row, w, h }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        col = try c.decode(Int.self, forKey: .col)
+        row = try c.decode(Int.self, forKey: .row)
+        w = try c.decode(Int.self, forKey: .w)
+        h = try c.decode(Int.self, forKey: .h)
+        switch try c.decode(String.self, forKey: .type) {
+        case "stat":
+            kind = .stat(try c.decode(StatMetric.self, forKey: .metric),
+                         try c.decode(StatStyle.self, forKey: .style))
+        case "volume": kind = .volume
+        case "clock": kind = .clock
+        case let other:
+            throw DecodingError.dataCorruptedError(
+                forKey: .type, in: c, debugDescription: "unknown live widget type \(other)")
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(col, forKey: .col)
+        try c.encode(row, forKey: .row)
+        try c.encode(w, forKey: .w)
+        try c.encode(h, forKey: .h)
+        switch kind {
+        case .stat(let metric, let style):
+            try c.encode("stat", forKey: .type)
+            try c.encode(metric, forKey: .metric)
+            try c.encode(style, forKey: .style)
+        case .volume: try c.encode("volume", forKey: .type)
+        case .clock: try c.encode("clock", forKey: .type)
+        }
+    }
+}
+
 public struct PageConfig: Codable, Equatable, Sendable {
     public var name: String
     public var keys: [KeyConfig]
+    public var live: [LiveWidgetConfig]
 
-    public init(name: String, keys: [KeyConfig]) {
+    public init(name: String, keys: [KeyConfig], live: [LiveWidgetConfig] = []) {
         self.name = name
         self.keys = keys
+        self.live = live
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        keys = try c.decode([KeyConfig].self, forKey: .keys)
+        live = try c.decodeIfPresent([LiveWidgetConfig].self, forKey: .live) ?? []
     }
 }
 
@@ -71,7 +153,7 @@ public struct DeckConfig: Codable, Equatable, Sendable {
     public static let gridCols = 8
     public static let gridRows = 2
     public static let maxPages = 8
-    public static let maxKeysPerPage = 16
+    public static let maxWidgetsPerPage = 16
     public static let maxKeyIdBytes = 15
     public static let maxPageNameBytes = 23
 
@@ -92,28 +174,31 @@ public struct DeckConfig: Codable, Equatable, Sendable {
             guard page.name.utf8.count <= Self.maxPageNameBytes else {
                 throw DeckConfigError.invalid("page name \(page.name) is longer than \(Self.maxPageNameBytes) bytes")
             }
-            guard page.keys.count <= Self.maxKeysPerPage else {
-                throw DeckConfigError.invalid("page \(page.name) has \(page.keys.count) keys, max \(Self.maxKeysPerPage)")
+            let count = page.keys.count + page.live.count
+            guard count <= Self.maxWidgetsPerPage else {
+                throw DeckConfigError.invalid("page \(page.name) has \(count) widgets, max \(Self.maxWidgetsPerPage)")
             }
             var cells = Set<Int>()
-            for k in page.keys {
-                guard !k.id.isEmpty else {
-                    throw DeckConfigError.invalid("a key on page \(page.name) has an empty id")
+            let frames = page.keys.map { ($0.id, $0.col, $0.row, $0.w, $0.h) }
+                + page.live.map { ($0.id, $0.col, $0.row, $0.w, $0.h) }
+            for (id, col, row, w, h) in frames {
+                guard !id.isEmpty else {
+                    throw DeckConfigError.invalid("a widget on page \(page.name) has an empty id")
                 }
-                guard k.id.utf8.count <= Self.maxKeyIdBytes else {
-                    throw DeckConfigError.invalid("key id \(k.id) is longer than \(Self.maxKeyIdBytes) bytes")
+                guard id.utf8.count <= Self.maxKeyIdBytes else {
+                    throw DeckConfigError.invalid("widget id \(id) is longer than \(Self.maxKeyIdBytes) bytes")
                 }
-                guard ids.insert(k.id).inserted else {
-                    throw DeckConfigError.invalid("duplicate key id \(k.id)")
+                guard ids.insert(id).inserted else {
+                    throw DeckConfigError.invalid("duplicate widget id \(id)")
                 }
-                guard k.w >= 1, k.h >= 1, k.col >= 0, k.row >= 0,
-                      k.col + k.w <= Self.gridCols, k.row + k.h <= Self.gridRows else {
-                    throw DeckConfigError.invalid("key \(k.id) is outside the \(Self.gridCols)x\(Self.gridRows) grid")
+                guard w >= 1, h >= 1, col >= 0, row >= 0,
+                      col + w <= Self.gridCols, row + h <= Self.gridRows else {
+                    throw DeckConfigError.invalid("widget \(id) is outside the \(Self.gridCols)x\(Self.gridRows) grid")
                 }
-                for c in k.col..<(k.col + k.w) {
-                    for r in k.row..<(k.row + k.h) {
+                for c in col..<(col + w) {
+                    for r in row..<(row + h) {
                         guard cells.insert(r * Self.gridCols + c).inserted else {
-                            throw DeckConfigError.invalid("key \(k.id) overlaps another key on page \(page.name)")
+                            throw DeckConfigError.invalid("widget \(id) overlaps another widget on page \(page.name)")
                         }
                     }
                 }

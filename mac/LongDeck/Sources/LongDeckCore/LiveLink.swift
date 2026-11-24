@@ -1,0 +1,72 @@
+import Foundation
+
+public struct OutFrame: Equatable, Sendable {
+    public let type: String
+    public let body: String
+
+    public init(type: String, body: String) {
+        self.type = type
+        self.body = body
+    }
+}
+
+public enum LiveCommand: Equatable, Sendable { case setVolume(Int), toggleMute }
+
+public struct LiveLink: Sendable {
+    public private(set) var page: Int = -1
+    private var pushing = false
+    private var lastVolume: String?
+    private var heldVolume: String?
+
+    public init() {}
+
+    public mutating func reset() {
+        page = -1
+        pushing = false
+        lastVolume = nil
+        heldVolume = nil
+    }
+
+    public mutating func pageChanged(_ index: Int) {
+        page = index
+    }
+
+    public mutating func pushStarted() {
+        pushing = true
+    }
+
+    public mutating func pushFinished() -> OutFrame? {
+        pushing = false
+        guard let body = heldVolume else { return nil }
+        heldVolume = nil
+        return volumeFrame(body: body)
+    }
+
+    public func statsFrame(body: String) -> OutFrame? {
+        guard page >= 0, !pushing else { return nil }
+        return OutFrame(type: "stats", body: body)
+    }
+
+    public mutating func volumeFrame(body: String) -> OutFrame? {
+        if pushing {
+            heldVolume = body
+            return nil
+        }
+        guard body != lastVolume else { return nil }
+        lastVolume = body
+        return OutFrame(type: "volume", body: body)
+    }
+
+    public static func command(type: String, body: String, config: DeckConfig) -> LiveCommand? {
+        guard type == "slider" || type == "press",
+              let object = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],
+              let id = object["id"] as? String,
+              config.pages.contains(where: { $0.live.contains { $0.id == id && $0.kind == .volume } })
+        else { return nil }
+        if type == "slider" {
+            guard let value = object["value"] as? Int, (0...100).contains(value) else { return nil }
+            return .setVolume(value)
+        }
+        return object["kind"] as? String == "tap" ? .toggleMute : nil
+    }
+}
