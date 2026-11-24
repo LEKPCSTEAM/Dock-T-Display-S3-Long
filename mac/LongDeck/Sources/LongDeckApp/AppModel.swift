@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var awaitingCode = false
     @Published private(set) var codeRejected = false
     @Published private(set) var currentPage = -1
+    @Published private(set) var needsPairing = false
 
     let discovery = Discovery()
     let system = RealSystemControl()
@@ -122,6 +123,7 @@ final class AppModel: ObservableObject {
         retryTask?.cancel()
         awaitingCode = false
         codeRejected = false
+        needsPairing = false
         connect(board, pairing: true)
     }
 
@@ -176,6 +178,13 @@ final class AppModel: ObservableObject {
             currentPage = index
         case .actionFailed(let message):
             lastError = message
+        case .boardForgotMac:
+            KeyStore.delete(boardId: board.id)
+            retryTask?.cancel()
+            connection = nil
+            awaitingCode = false
+            status = .offline
+            needsPairing = true
         case .closed(let reason):
             connection = nil
             awaitingCode = false

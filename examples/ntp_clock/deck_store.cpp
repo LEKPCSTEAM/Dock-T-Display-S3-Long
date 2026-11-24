@@ -7,7 +7,8 @@
 #define DECK_DIR       "/deck"
 #define LAYOUT_PATH    DECK_DIR "/layout.json"
 #define LAYOUT_TMP     DECK_DIR "/layout.tmp"
-#define FACE_HDR_LEN   4
+#define FACE_TMP       DECK_DIR "/face.tmp"
+#define FACE_HDR_LEN  4
 #define FACE_MAX_DIM   1024
 
 static bool s_ok;
@@ -73,9 +74,24 @@ bool deck_store_save_face(uint16_t id, uint16_t w, uint16_t h, const uint8_t *px
     char path[32];
     face_path(path, sizeof(path), id);
     uint8_t hdr[FACE_HDR_LEN] = {(uint8_t)w, (uint8_t)(w >> 8), (uint8_t)h, (uint8_t)(h >> 8)};
-    bool    ok = write_file(path, hdr, sizeof(hdr), px, (size_t)w * h * 3);
-    if (!ok) LittleFS.remove(path);
+    bool    ok = write_file(FACE_TMP, hdr, sizeof(hdr), px, (size_t)w * h * 3);
+    if (ok) ok = LittleFS.rename(FACE_TMP, path);
+    if (!ok) LittleFS.remove(FACE_TMP);
     return ok;
+}
+
+void deck_store_invalidate_faces(const DeckLayout *layout)
+{
+    if (!s_ok || !layout) return;
+    for (int p = 0; p < layout->page_count; p++) {
+        const DeckPage &pg = layout->pages[p];
+        for (int i = 0; i < pg.count; i++) {
+            if (pg.widgets[i].type != DW_KEY) continue;
+            char path[32];
+            face_path(path, sizeof(path), pg.widgets[i].face);
+            LittleFS.remove(path);
+        }
+    }
 }
 
 bool deck_store_face_exists(uint16_t id)

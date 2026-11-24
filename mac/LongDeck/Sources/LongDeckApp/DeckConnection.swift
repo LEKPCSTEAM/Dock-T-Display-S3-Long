@@ -9,6 +9,7 @@ enum ConnectionEvent {
     case pageChanged(Int)
     case actionFailed(String)
     case closed(reason: String?)
+    case boardForgotMac
 }
 
 @MainActor
@@ -27,6 +28,7 @@ final class DeckConnection {
     private var boardHash: String?
     private var closed = false
     private var pingTask: Task<Void, Never>?
+    private var pushTask: Task<Void, Never>?
     private var lastPong = Date()
     private static let pingInterval = 5.0
     private static let pongTimeout = 10.0
@@ -64,6 +66,7 @@ final class DeckConnection {
         guard !closed else { return }
         closed = true
         pingTask?.cancel()
+        pushTask?.cancel()
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
     }
@@ -129,6 +132,9 @@ final class DeckConnection {
             onSession(text)
             return
         }
+        if !pairing, Self.isUnpairedChallenge(text) {
+            return forgotten()
+        }
         handle(handshake.receive(text))
         if pairing, !sawChallenge, text.contains("\"challenge\"") {
             sawChallenge = true
@@ -153,6 +159,8 @@ final class DeckConnection {
             case .failed(let reason):
                 if reason == "code" {
                     onEvent(.codeRejected)
+                } else if reason == "auth", !pairing, opener == nil {
+                    forgotten()
                 } else {
                     finish(reason)
                 }
@@ -194,15 +202,38 @@ final class DeckConnection {
             onEvent(.actionFailed("Layout too large for the board: \(bytes) bytes, max \(max)"))
             return
         }
-        task.send(.string(layout)) { _ in }
-        for id in built.faces.keys.sorted() {
-            let face = built.faces[id]!
-            for chunk in sealer.faceChunks(id: id, w: face.w, h: face.h, pixels: face.pixels) {
-                task.send(.data(chunk)) { _ in }
-            }
-        }
         self.sealer = sealer
         boardHash = built.hash
+        pushTask?.cancel()
+        pushTask = Task { @MainActor [weak self] in
+            guard await Self.send(.string(layout), on: task) else { return self?.finish("send failed") ?? () }
+            for id in built.faces.keys.sorted() {
+                let face = built.faces[id]!
+                guard let self, !self.closed, self.task === task, self.sealer != nil else { return }
+                let chunks = self.sealer!.faceChunks(id: id, w: face.w, h: face.h, pixels: face.pixels)
+                for chunk in chunks {
+                    guard !Task.isCancelled, !self.closed else { return }
+                    guard await Self.send(.data(chunk), on: task) else { return self.finish("send failed") }
+                }
+            }
+        }
+    }
+
+    private static func send(_ message: URLSessionWebSocketTask.Message, on task: URLSessionWebSocketTask) async -> Bool {
+        await withCheckedContinuation { cont in
+            task.send(message) { cont.resume(returning: $0 == nil) }
+        }
+    }
+
+    private static func isUnpairedChallenge(_ text: String) -> Bool {
+        guard let obj = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any] else { return false }
+        return obj["t"] as? String == "challenge" && obj["paired"] as? Bool == false
+    }
+
+    private func forgotten() {
+        guard !closed else { return }
+        close()
+        onEvent(.boardForgotMac)
     }
 
     private func finish(_ reason: String?) {

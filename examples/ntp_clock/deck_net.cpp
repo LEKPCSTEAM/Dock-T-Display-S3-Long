@@ -49,6 +49,7 @@ static bool             s_was_ready[SLOTS];
 static FaceJob          s_jobs[MAX_FACE_JOBS];
 static char             s_board_id[13];
 static DeckLayout       s_parse_tmp;
+static bool             s_layout_rejected;
 
 static SemaphoreHandle_t volatile s_mu;
 static QueueHandle_t volatile     s_queue;
@@ -98,9 +99,26 @@ static void free_jobs()
     }
 }
 
+static bool face_referenced(uint16_t id)
+{
+    bool found = false;
+    lock();
+    if (s_snap_has_layout) {
+        for (int p = 0; p < s_snap_layout.page_count && !found; p++) {
+            const DeckPage &pg = s_snap_layout.pages[p];
+            for (int i = 0; i < pg.count; i++) {
+                if (pg.widgets[i].type == DW_KEY && pg.widgets[i].face == id) found = true;
+            }
+        }
+    }
+    unlock();
+    return found;
+}
+
 static void on_face(void *, const DeckFaceChunk *c)
 {
     if (c->id < 1 || c->id > DECK_MAX_FACES || c->w == 0 || c->h == 0 || c->w > FACE_MAX_W || c->h > FACE_MAX_H) return;
+    if (s_layout_rejected || !face_referenced(c->id)) return;
 
     FaceJob *job = nullptr, *spare = nullptr;
     for (FaceJob &j : s_jobs) {
@@ -151,13 +169,18 @@ static void on_message(void *, const char *type, const char *body, size_t body_l
     char err[48];
     if (!deck_layout_parse(body, body_len, &s_parse_tmp, err, sizeof(err))) {
         Serial.printf("[deck] layout rejected: %s\n", err);
+        s_layout_rejected = true;
         return;
     }
+    s_layout_rejected = false;
+    free_jobs();
     if (!deck_store_save_layout(body, body_len)) Serial.println("[deck] layout save failed");
+    deck_store_invalidate_faces(&s_parse_tmp);
     deck_store_prune(&s_parse_tmp);
     lock();
     s_snap_layout     = s_parse_tmp;
     s_snap_has_layout = true;
+    memset(s_snap_dirty, 0, sizeof(s_snap_dirty));
     s_snap_version++;
     unlock();
     Serial.printf("[deck] layout %s: %u pages\n", s_parse_tmp.hash, s_parse_tmp.page_count);
@@ -187,6 +210,7 @@ static bool cache_complete()
     for (int p = 0; p < s_snap_layout.page_count; p++) {
         const DeckPage &pg = s_snap_layout.pages[p];
         for (int i = 0; i < pg.count; i++) {
+            if (pg.widgets[i].type != DW_KEY) continue;
             if (!deck_store_face_exists(pg.widgets[i].face)) return false;
         }
     }
@@ -219,6 +243,7 @@ static void on_ws_event(uint8_t num, WStype_t type, uint8_t *payload, size_t len
         delete s_sess[num];
         s_sess[num]      = new DeckSession(&s_env);
         s_was_ready[num] = false;
+        s_layout_rejected = false;
         s_sess[num]->on_message = on_message;
         s_sess[num]->on_face    = on_face;
         Serial.printf("[deck] slot %u connected\n", num);

@@ -72,6 +72,18 @@ private func tempURL() -> URL {
         #expect(throws: DeckConfigError.self) { try nine.validate() }
     }
 
+    @Test func validationEnforcesBoardNameLimits() throws {
+        func cfg(page: String = "P", id: String) -> DeckConfig {
+            DeckConfig(version: 1, pages: [PageConfig(name: page, keys: [key(id, 0, 0)])])
+        }
+        #expect(throws: DeckConfigError.self) { try cfg(id: "").validate() }
+        #expect(throws: DeckConfigError.self) { try cfg(id: String(repeating: "a", count: 16)).validate() }
+        #expect(throws: DeckConfigError.self) { try cfg(id: String(repeating: "é", count: 8)).validate() }
+        #expect(throws: DeckConfigError.self) { try cfg(page: String(repeating: "p", count: 24), id: "a").validate() }
+        #expect(throws: DeckConfigError.self) { try cfg(page: String(repeating: "é", count: 12), id: "a").validate() }
+        try cfg(page: String(repeating: "p", count: 23), id: String(repeating: "a", count: 15)).validate()
+    }
+
     @Test func loadThrowsOnInvalidFile() throws {
         let bad = DeckConfig(version: 1, pages: [PageConfig(name: "P", keys: [key("a", 9, 0)])])
         let url = tempURL()

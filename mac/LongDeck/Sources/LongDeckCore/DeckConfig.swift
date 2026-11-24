@@ -72,6 +72,8 @@ public struct DeckConfig: Codable, Equatable, Sendable {
     public static let gridRows = 2
     public static let maxPages = 8
     public static let maxKeysPerPage = 16
+    public static let maxKeyIdBytes = 15
+    public static let maxPageNameBytes = 23
 
     public var version: Int
     public var pages: [PageConfig]
@@ -87,11 +89,20 @@ public struct DeckConfig: Codable, Equatable, Sendable {
         }
         var ids = Set<String>()
         for page in pages {
+            guard page.name.utf8.count <= Self.maxPageNameBytes else {
+                throw DeckConfigError.invalid("page name \(page.name) is longer than \(Self.maxPageNameBytes) bytes")
+            }
             guard page.keys.count <= Self.maxKeysPerPage else {
                 throw DeckConfigError.invalid("page \(page.name) has \(page.keys.count) keys, max \(Self.maxKeysPerPage)")
             }
             var cells = Set<Int>()
             for k in page.keys {
+                guard !k.id.isEmpty else {
+                    throw DeckConfigError.invalid("a key on page \(page.name) has an empty id")
+                }
+                guard k.id.utf8.count <= Self.maxKeyIdBytes else {
+                    throw DeckConfigError.invalid("key id \(k.id) is longer than \(Self.maxKeyIdBytes) bytes")
+                }
                 guard ids.insert(k.id).inserted else {
                     throw DeckConfigError.invalid("duplicate key id \(k.id)")
                 }

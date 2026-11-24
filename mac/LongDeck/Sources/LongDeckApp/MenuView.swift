@@ -9,6 +9,9 @@ struct MenuView: View {
         if let error = model.configError {
             Text("Config error: \(error)")
         }
+        if model.needsPairing {
+            Text("Board forgot this Mac. Pair again")
+        }
         if let error = model.lastError {
             Text(error)
         }
