@@ -261,12 +261,33 @@ let hk1Hints = hints("Bash", hk1Input)!
         #expect(!PermissionPromptMatcher.matches(s, twoLines, paneWidth: 8))
     }
 
+    @Test func ambiguousWidthNearEdgeIsRefused() throws {
+        let s = try screenOf(bashDialog(["echo 🖥", "rm"]))
+        let oneLine = try #require(hints("Bash", bashInput("echo 🖥 rm")))
+        let twoLines = try #require(hints("Bash", bashInput("echo 🖥\nrm")))
+        #expect(!PermissionPromptMatcher.matches(s, oneLine, paneWidth: 11))
+        #expect(!PermissionPromptMatcher.matches(s, twoLines, paneWidth: 11))
+        #expect(PermissionPromptMatcher.matches(s, twoLines, paneWidth: 20))
+        #expect(PermissionPromptMatcher.matches(s, oneLine, paneWidth: 10))
+        for glyph in ["🌡", "🗑", "⚠️", "…"] {
+            let row = try screenOf(bashDialog(["echo \(glyph)", "rm"]))
+            #expect(!PermissionPromptMatcher.matches(row, try #require(hints("Bash", bashInput("echo \(glyph) rm"))), paneWidth: 11),
+                    "\(glyph)")
+        }
+    }
+
     @Test func displayWidthCountsWideCharacters() {
-        #expect(PermissionPromptMatcher.displayWidth("abc") == 3)
-        #expect(PermissionPromptMatcher.displayWidth("日本") == 4)
-        #expect(PermissionPromptMatcher.displayWidth("กิน") == 2)
-        #expect(PermissionPromptMatcher.displayWidth("❯ ⏺ …") == 5)
-        #expect(PermissionPromptMatcher.displayWidth("🚀") == 2)
+        func width(_ s: String) -> [Int] {
+            let w = PermissionPromptMatcher.displayWidth(s)
+            return [w.min, w.max]
+        }
+        #expect(width("abc") == [3, 3])
+        #expect(width("日本") == [4, 4])
+        #expect(width("กิน") == [2, 2])
+        #expect(width("🚀") == [2, 2])
+        #expect(width("❯ ⏺ …") == [5, 8])
+        #expect(width("🖥🌡🗑") == [3, 6])
+        #expect(width("⚠️") == [1, 2])
     }
 
     @Test func readsNoFirstVariant() throws {

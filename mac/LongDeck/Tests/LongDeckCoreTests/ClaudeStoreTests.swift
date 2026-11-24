@@ -133,6 +133,21 @@ private func json(_ body: String) throws -> [String: Any] {
         #expect(duplicate.target(session: claudeB) == nil)
     }
 
+    @Test func lookAlikeIgnoresWhitespace() {
+        func ambiguous(_ head: String, _ other: String) -> Bool? {
+            var store = ClaudeStore(runTag: "a3f9")
+            for command in [head, other] {
+                let input = String(decoding: try! JSONSerialization.data(withJSONObject: ["command": command]), as: UTF8.self)
+                feed(&store, hookJSON(claudeA, "PermissionRequest", extra: #","tool_name":"Bash","tool_input":"# + input), at: at(0))
+            }
+            return store.target(session: claudeA)?.ambiguous
+        }
+        #expect(ambiguous("echo a b", "echo a\nb") == true)
+        #expect(ambiguous("echo a b", "echo ab") == true)
+        #expect(ambiguous("echo a  b", "echo a b") == true)
+        #expect(ambiguous("echo a b", "echo a c") == false)
+    }
+
     @Test func queueIsCapped() {
         var store = ClaudeStore(runTag: "a3f9")
         for i in 0..<20 {

@@ -175,6 +175,7 @@ public struct ClaudeResponder: Sendable {
             guard let always = screen.always, let label = screen.alwaysLabel,
                   hints.alwaysPrefixes.contains(where: { label.hasPrefix($0) })
             else { return "no_always" }
+            guard PermissionPromptMatcher.alwaysScopeVerified(screen, hints) else { return "unverifiable" }
             key = always
         case .deny: key = screen.no
         default: key = screen.yes

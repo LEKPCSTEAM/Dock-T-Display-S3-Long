@@ -4,15 +4,17 @@ public struct PromptScreen: Equatable, Sendable {
     public var yes: Character
     public var always: Character?
     public var alwaysLabel: String?
+    public var alwaysOnOneRow: Bool
     public var no: Character
     public var regionLines: [String]
     public var regionRows: [String]
 
-    public init(yes: Character, always: Character?, alwaysLabel: String?, no: Character,
+    public init(yes: Character, always: Character?, alwaysLabel: String?, alwaysOnOneRow: Bool, no: Character,
                 regionLines: [String], regionRows: [String]) {
         self.yes = yes
         self.always = always
         self.alwaysLabel = alwaysLabel
+        self.alwaysOnOneRow = alwaysOnOneRow
         self.no = no
         self.regionLines = regionLines
         self.regionRows = regionRows
@@ -37,6 +39,8 @@ public struct PromptHints: Equatable, Sendable {
 
     static let fileTitles = ["Edit file", "Create file", "Overwrite file", "Write file"]
     static let bashQuestion = "Do you want to proceed?"
+    static let bashAlwaysPrefix = "Yes, and don't ask again for "
+    private static let shellOperators = [";", "|", "&", "`", ">", "<", "$("]
 
     var renderings: [String] { bodies.map { ($0 + detail).joined(separator: "\n") } }
 
@@ -52,7 +56,7 @@ public struct PromptHints: Equatable, Sendable {
             guard !body.isEmpty else { return nil }
             return PromptHints(titles: ["Bash command"], bodies: [body],
                                detail: PermissionPromptMatcher.textLines(description as? String ?? ""),
-                               question: bashQuestion, alwaysPrefixes: ["Yes, and don't ask again for "])
+                               question: bashQuestion, alwaysPrefixes: alwaysAllowed(command) ? [bashAlwaysPrefix] : [])
         case "Edit", "MultiEdit", "Write":
             return fileHints(input, cwd, titles: fileTitles)
         case "Read":
@@ -61,6 +65,14 @@ public struct PromptHints: Equatable, Sendable {
             // Other dialogs' titles are unverified until live check L2.
             return nil
         }
+    }
+
+    // Always saves a prefix rule; only plain one-line commands keep it visible.
+    private static func alwaysAllowed(_ command: String) -> Bool {
+        let line = command.trimmingCharacters(in: .whitespaces)
+        return !line.isEmpty && !shellOperators.contains(where: { line.contains($0) })
+            && !line.contains(where: \.isNewline)
+            && !line.unicodeScalars.contains(where: { [.control, .format].contains($0.properties.generalCategory) })
     }
 
     // Always is never offered for files: its scope is not shown on the board.
@@ -88,12 +100,14 @@ public enum PermissionPromptMatcher {
     private static let interruptWindow = 12
     private static let knownTitles: Set<String> = Set(PromptHints.fileTitles + ["Bash command", "Read file"])
     private static let interruptHint = "esc to interrupt"
+    // ClaudeText.summary keeps 77 bytes before its ellipsis.
+    private static let summaryVisibleBytes = 77
     private static let spinnerGlyphs: Set<Character> = ["·", "✢", "✳", "✶", "✻", "✽", "*"]
     static let cutDialogNotice = "This terminal is too short"
 
     private struct DialogRow {
         var text: String
-        var end: Int
+        var end: (min: Int, max: Int)
         var isSeparator: Bool
     }
 
@@ -110,21 +124,27 @@ public enum PermissionPromptMatcher {
               !lines[(last + 1)...].contains(where: isInputPrompt)
         else { return nil }
         var options = [bottom]
+        var rowOf = [last]
         var first = last
         for expected in stride(from: bottom.number - 1, through: 1, by: -1) {
             guard let above = (max(0, first - maxGap - 1)..<first).last(where: { option(lines[$0]) != nil }),
                   let o = option(lines[above]), o.number == expected
             else { return nil }
             options.append(o)
+            rowOf.append(above)
             first = above
         }
         options.reverse()
+        rowOf.reverse()
         let yesRows = options.filter { $0.label == "Yes" }
         guard yesRows.count == 1, let no = options.first(where: { $0.label.hasPrefix("No") }) else { return nil }
-        let alwaysRows = options.filter { $0.label.hasPrefix("Yes, ") }
-        let always = alwaysRows.count == 1 ? alwaysRows[0] : nil
+        let alwaysIndices = options.indices.filter { options[$0].label.hasPrefix("Yes, ") }
+        let always = alwaysIndices.count == 1 ? alwaysIndices[0] : nil
+        // A wrapped label shows only its first row here.
+        let oneRow = always.map { $0 + 1 < rowOf.count && rowOf[$0 + 1] == rowOf[$0] + 1 } ?? false
         let top = max(0, first - regionSize)
-        return PromptScreen(yes: yesRows[0].digit, always: always?.digit, alwaysLabel: always?.label, no: no.digit,
+        return PromptScreen(yes: yesRows[0].digit, always: always.map { options[$0].digit },
+                            alwaysLabel: always.map { options[$0].label }, alwaysOnOneRow: oneRow, no: no.digit,
                             regionLines: Array(lines[top..<first]), regionRows: Array(raw[top..<first]))
     }
 
@@ -173,8 +193,26 @@ public enum PermissionPromptMatcher {
         return lines
     }
 
-    static func displayWidth<S: StringProtocol>(_ s: S) -> Int {
-        s.reduce(0) { $0 + columns($1) }
+    static func displayWidth<S: StringProtocol>(_ s: S) -> (min: Int, max: Int) {
+        s.reduce((min: 0, max: 0)) { sum, c in
+            let w = columns(c)
+            return (sum.min + w.min, sum.max + w.max)
+        }
+    }
+
+    // The saved rule's prefix must start the command the deck showed.
+    static func alwaysScopeVerified(_ screen: PromptScreen, _ hints: PromptHints) -> Bool {
+        guard screen.alwaysOnOneRow, let label = screen.alwaysLabel, !label.contains("…"),
+              hints.bodies.count == 1, hints.bodies[0].count == 1,
+              label.hasPrefix(PromptHints.bashAlwaysPrefix),
+              let sep = label.range(of: " commands in ", options: .backwards)
+        else { return false }
+        let scopeStart = label.index(label.startIndex, offsetBy: PromptHints.bashAlwaysPrefix.count)
+        guard scopeStart <= sep.lowerBound else { return false }
+        let scope = String(label[scopeStart..<sep.lowerBound])
+        let command = hints.bodies[0][0]
+        return !scope.isEmpty && !label[sep.upperBound...].isEmpty && scope.utf8.count <= summaryVisibleBytes
+            && (command == scope || command.hasPrefix(scope + " "))
     }
 
     // Plain rule or round box top at column 0; true when boxed.
@@ -198,7 +236,8 @@ public enum PermissionPromptMatcher {
                 offset = 1
             }
             let text = content.trimmingCharacters(in: .whitespaces)
-            rows.append(DialogRow(text: text, end: offset + displayWidth(rightTrimmed(content)),
+            let width = displayWidth(rightTrimmed(content))
+            rows.append(DialogRow(text: text, end: (offset + width.min, offset + width.max),
                                   isSeparator: text.allSatisfy(isBoxDrawing)))
         }
         return rows
@@ -216,7 +255,12 @@ public enum PermissionPromptMatcher {
             while true {
                 guard r < rows.count, !rows[r].text.isEmpty, rest.hasPrefix(rows[r].text) else { return nil }
                 // Only a row filling the pane can be a soft wrap.
-                let full = paneWidth.map { rows[r].end >= $0 - 1 } ?? false
+                var full = false
+                if let paneWidth {
+                    full = rows[r].end.min >= paneWidth - 1
+                    // Glyphs of uncertain width must not decide wrap versus newline.
+                    guard full == (rows[r].end.max >= paneWidth - 1) else { return nil }
+                }
                 rest = rest.dropFirst(rows[r].text.count)
                 r += 1
                 if rest.isEmpty {
@@ -274,18 +318,29 @@ public enum PermissionPromptMatcher {
         0x1F300...0x1F64F, 0x1F900...0x1F9FF, 0x20000...0x3FFFD,
     ]
 
-    private static func columns(_ c: Character) -> Int {
-        guard let u = c.unicodeScalars.first else { return 0 }
-        if u.value < 0x20 || (0x7F..<0xA0).contains(u.value) { return 0 }
+    // East Asian Ambiguous and symbol blocks: terminals disagree between 1 and 2.
+    private static let ambiguousRanges: [ClosedRange<UInt32>] = [
+        0x00A1...0x02FF, 0x0391...0x0451, 0x2010...0x2BFF, 0xE000...0xF8FF, 0xFE00...0xFE0F, 0xFFFD...0xFFFD,
+        0x1F100...0x1F1FF, 0xF0000...0x10FFFD,
+    ]
+
+    private static func columns(_ c: Character) -> (min: Int, max: Int) {
+        guard let u = c.unicodeScalars.first else { return (0, 0) }
+        if u.value < 0x20 || (0x7F..<0xA0).contains(u.value) { return (0, 0) }
         switch u.properties.generalCategory {
-        case .nonspacingMark, .enclosingMark, .format: return 0
+        case .nonspacingMark, .enclosingMark, .format: return (0, 0)
         default: break
+        }
+        if u.isASCII { return (1, 1) }
+        // Text-default emoji and VS16 sequences differ between tmux and terminals.
+        if c.unicodeScalars.contains("\u{FE0F}") || (u.properties.isEmoji && !u.properties.isEmojiPresentation) {
+            return (1, 2)
         }
         if c.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation })
             || wideRanges.contains(where: { $0.contains(u.value) }) {
-            return 2
+            return (2, 2)
         }
-        return 1
+        return ambiguousRanges.contains(where: { $0.contains(u.value) }) ? (1, 2) : (1, 1)
     }
 
     private static func option(_ line: String) -> (digit: Character, number: Int, label: String)? {

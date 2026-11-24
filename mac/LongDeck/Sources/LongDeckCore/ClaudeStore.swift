@@ -178,7 +178,9 @@ public struct ClaudeStore: Sendable {
         guard let ha = PromptHints.from(toolName: a.toolName, toolInputJSON: a.toolInputJSON, cwd: cwd),
               let hb = PromptHints.from(toolName: b.toolName, toolInputJSON: b.toolInputJSON, cwd: cwd)
         else { return false }
-        return ha.titles == hb.titles && !Set(ha.renderings).isDisjoint(with: hb.renderings)
+        // Wraps can drop or add whitespace, so compare without any.
+        let flat = { (s: String) in String(s.filter { !$0.isWhitespace }) }
+        return ha.titles == hb.titles && !Set(ha.renderings.map(flat)).isDisjoint(with: hb.renderings.map(flat))
     }
 
     public func pendingPrompts() -> [(session: ClaudeSession, pending: ClaudePending)] {
