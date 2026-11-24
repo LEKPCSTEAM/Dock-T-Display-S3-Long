@@ -89,14 +89,21 @@ struct AppPickerView: View {
 final class AppChooserState: ObservableObject {
     @Published var showing = false
     @Published var apps: [AppEntry] = []
-    private var loaded = false
+    @MainActor private static var scanned: [AppEntry]?
+    @MainActor private static var scanning = false
 
     @MainActor func open() {
         showing = true
-        guard !loaded else { return }
-        loaded = true
+        if let cached = Self.scanned {
+            apps = cached
+            return
+        }
+        guard !Self.scanning else { return }
+        Self.scanning = true
         Task { [weak self] in
             let found = await AppCatalog.scan(AppCatalog.standardRoots)
+            Self.scanned = found
+            Self.scanning = false
             self?.apps = found
         }
     }

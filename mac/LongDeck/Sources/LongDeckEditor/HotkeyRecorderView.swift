@@ -48,8 +48,9 @@ final class HotkeyRecorderField: NSView {
     }
 
     override func resignFirstResponder() -> Bool {
+        guard super.resignFirstResponder() else { return false }
         stopRecording()
-        return super.resignFirstResponder()
+        return true
     }
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
@@ -66,7 +67,7 @@ final class HotkeyRecorderField: NSView {
 
     @discardableResult
     func handle(_ event: NSEvent) -> NSEvent? {
-        guard isRecording else { return event }
+        guard isRecording, event.window === window else { return event }
         if event.type == .flagsChanged {
             heldFlags = event.modifierFlags
             needsDisplay = true

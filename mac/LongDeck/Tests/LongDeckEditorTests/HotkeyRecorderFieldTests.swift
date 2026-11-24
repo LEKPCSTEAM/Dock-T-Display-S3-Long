@@ -53,6 +53,20 @@ import Testing
         #expect(field.handle(event) === event)
     }
 
+    @Test func foreignWindowEventPassesThrough() {
+        let (field, window, _) = makeField()
+        var recorded: [DeckAction] = []
+        field.onRecord = { recorded.append($0) }
+        window.makeFirstResponder(field)
+        let foreign = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: 0,
+                                       windowNumber: 0, context: nil, characters: "q",
+                                       charactersIgnoringModifiers: "q", isARepeat: false, keyCode: 12)!
+        #expect(field.handle(foreign) === foreign)
+        #expect(recorded.isEmpty)
+        #expect(field.isRecording)
+        window.makeFirstResponder(nil)
+    }
+
     @Test func repeatIgnored() {
         let (field, window, _) = makeField()
         var recorded: [DeckAction] = []
