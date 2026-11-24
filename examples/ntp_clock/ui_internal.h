@@ -76,6 +76,11 @@ void       ui_set_deck_pages(uint8_t n);
 lv_obj_t  *ui_deck_tile(uint8_t i);
 void       page_deck_update(const UiTick *t);
 
+// Board stat, volume and clock widgets inside deck tiles (ui_deck_live.cpp).
+void ui_live_reset();
+bool ui_live_create(lv_obj_t *tile, const DeckWidget *w);
+void ui_live_update(const UiTick *t, bool ready);
+
 // Full-screen overlays on lv_layer_top(), driven from the ui.cpp tick.
 void ui_pair_update(const UiTick *t);
 void ui_portal_update(const UiTick *t);

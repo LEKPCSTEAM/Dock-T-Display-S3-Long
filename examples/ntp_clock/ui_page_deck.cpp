@@ -133,6 +133,9 @@ static void hint_create(lv_obj_t *tile)
 
 static void key_create(lv_obj_t *tile, const DeckWidget *w)
 {
+    if (ui_live_create(tile, w)) {
+        return;
+    }
     lv_coord_t x  = w->col * CELL_W + CELL_PAD;
     lv_coord_t y  = w->row * CELL_H + CELL_PAD;
     lv_coord_t bw = w->w * CELL_W - 2 * CELL_PAD;
@@ -172,6 +175,7 @@ static void deck_rebuild()
     have_layout = have;
 
     ui_set_deck_pages(n);
+    ui_live_reset();
     for (uint8_t i = 0; i < built_pages && i < DECK_MAX_PAGES; i++) {
         lv_obj_t *tile = ui_deck_tile(i);
         if (tile) {
@@ -230,7 +234,7 @@ static int visible_deck_index(bool have)
     return -1;
 }
 
-void page_deck_update(const UiTick *)
+void page_deck_update(const UiTick *t)
 {
     uint32_t ver = deck_net_layout_version();
     bool rebuilt = ver != built_version;
@@ -270,6 +274,8 @@ void page_deck_update(const UiTick *)
             }
         }
     }
+
+    ui_live_update(t, ready);
 
     int8_t idx = (int8_t)visible_deck_index(have_layout);
     if (idx != sent_page) {
