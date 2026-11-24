@@ -22,7 +22,19 @@ Ad-hoc signatures change on every build, so macOS forgets the Accessibility gran
 
 ## Config
 
-`~/Library/Application Support/LongDeck/config.json`. Changes are picked up automatically. An invalid file is not pushed and the error shows in the menu. Use "Open config folder" to create a sample.
+`~/Library/Application Support/LongDeck/config.json`. The layout editor writes this file (indented, sorted keys, unescaped paths). Hand edits still work and are picked up automatically. An invalid file is not pushed and the error shows in the menu. Use "Open config folder" to create a sample.
+
+## Editor
+
+Menu "Edit layout…" opens the editor window; the Dock icon shows while it is open. The pages list has + − ↑ ↓ (at most 8 pages, name up to 23 bytes, renamed in the inspector's Page section). Drag a palette tile onto the grid, or click it to add at the first free spot; a full page refuses with "No room there". Drag a widget to move it, use the three handles to resize, and press ⌘⌫ to delete. A page holds up to 16 widgets on the 8x2 grid; `claude_sessions` needs w of at least 2; ids are at most 15 bytes.
+
+The inspector edits the label, icon (none, app or SF Symbol), background, optional text colour (it also tints SF Symbols), action and long-press action. The app picker lists `/Applications`, `/System/Applications`, `~/Applications` and `Other…`, and choosing an app sets the key icon. The hotkey recorder: click the field, press the combo, Esc cancels. ⌘Z / ⇧⌘Z undo and redo.
+
+⌘S saves. Errors (empty action values, bad colours, more than 8 pages, a layout over 15360 bytes) show as issue rows, outline the widget in red and block saving; click a row to select the widget. A saved layout goes to the board now, or on its next connect if it is offline. Closing the window or quitting with unsaved changes asks Save / Don't Save / Cancel. While the editor has unsaved changes, outside edits of `config.json` are ignored.
+
+`foreground` is an optional key field (text colour, `#RRGGBB`); it is omitted when unset, so older configs are unchanged:
+
+    {"id":"term","col":0,"row":0,"w":1,"h":1,"label":"Term","background":"#1E1E1E","foreground":"#FFD54A","icon":{"symbol":{"name":"terminal"}},"action":{"openApp":{"path":"/System/Applications/Utilities/Terminal.app"}}}
 
 ### Live widgets
 
