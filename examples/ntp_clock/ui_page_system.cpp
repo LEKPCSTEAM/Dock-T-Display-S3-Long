@@ -5,13 +5,13 @@
 #include <string.h>
 
 #include "board.h"
+#include "eez/gen/screens.h"
 
 namespace {
 
 enum Row : uint8_t { ROW_WIFI = 0, ROW_IP, ROW_SYNC, ROW_UPTIME, ROW_BATTERY, ROW_CITY, ROW_COUNT };
 
 const int  BAR_COUNT = 4;
-const int  BRIGHTNESS_MIN = 10;
 const uint32_t BATTERY_PERIOD_MS = 5000;
 
 struct CachedLabel {
@@ -48,16 +48,12 @@ void set_cached(CachedLabel &c, const char *txt)
     }
 }
 
-void make_row(Row row, lv_coord_t y, const char *icon, lv_coord_t text_w)
+void bind_row(Row row, lv_obj_t *icon, lv_obj_t *text)
 {
-    lv_obj_t *tile = lv_obj_get_parent(s_slider);
-    s_icons[row] = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, icon);
-    lv_obj_set_pos(s_icons[row], 12, y);
-    s_text[row].obj = ui_label(tile, &ui_font_th_16, COLOR_TEXT, "—");
+    s_icons[row] = icon;
+    s_text[row].obj = text;
     s_text[row].txt[0] = 0;
-    lv_obj_set_width(s_text[row].obj, text_w);
-    lv_label_set_long_mode(s_text[row].obj, LV_LABEL_LONG_DOT);
-    lv_obj_set_pos(s_text[row].obj, 40, y);
+    lv_label_set_text(text, "—");
 }
 
 void on_slider(lv_event_t *e)
@@ -91,35 +87,6 @@ void on_sync(lv_event_t *)
 {
     net_request_ntp_sync();
     ui_toast("กำลังซิงค์เวลา");
-}
-
-lv_obj_t *make_switch(lv_obj_t *tile, lv_coord_t y, const char *text, lv_event_cb_t cb)
-{
-    lv_obj_t *label = ui_label(tile, &ui_font_th_16, COLOR_TEXT, text);
-    lv_obj_set_pos(label, 372, y + 6);
-
-    lv_obj_t *sw = lv_switch_create(tile);
-    lv_obj_set_size(sw, 52, 28);
-    lv_obj_set_pos(sw, 576, y);
-    lv_obj_set_style_bg_color(sw, COLOR_PANEL_HI, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(sw, COLOR_TEXT, LV_PART_KNOB);
-    lv_obj_add_event_cb(sw, cb, LV_EVENT_VALUE_CHANGED, nullptr);
-    return sw;
-}
-
-lv_obj_t *make_button(lv_obj_t *tile, lv_coord_t x, const char *text, lv_event_cb_t cb)
-{
-    lv_obj_t *btn = lv_btn_create(tile);
-    lv_obj_set_size(btn, 128, 40);
-    lv_obj_set_pos(btn, x, 132);
-    lv_obj_set_style_bg_color(btn, COLOR_PANEL_HI, 0);
-    lv_obj_set_style_bg_color(btn, COLOR_PANEL, LV_STATE_PRESSED);
-    lv_obj_set_style_radius(btn, 12, 0);
-    lv_obj_set_style_shadow_width(btn, 0, 0);
-    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t *label = ui_label(btn, &ui_font_th_16, COLOR_TEXT, text);
-    lv_obj_center(label);
-    return btn;
 }
 
 void format_ago(char *out, size_t len, time_t secs)
@@ -296,62 +263,47 @@ void refresh_info(const UiTick *t)
 
 }  // namespace
 
-void page_system_create(lv_obj_t *tile)
+void page_system_create(lv_obj_t *)
 {
     s_has_pmu = board_has_pmu();
 
-    // Right column: controls.
-    s_sun_icon = ui_label(tile, &ui_font_th_22, COLOR_TEXT, SYM_SUN);
-    lv_obj_set_pos(s_sun_icon, 372, 8);
+    s_sun_icon = objects.label_system_sun;
+    s_slider = objects.slider_system_brightness;
+    s_night_sw = objects.switch_system_night;
 
-    s_slider = lv_slider_create(tile);
-    lv_obj_set_size(s_slider, 190, 10);
-    lv_obj_set_pos(s_slider, 416, 18);
-    lv_slider_set_range(s_slider, BRIGHTNESS_MIN, 255);
     lv_obj_clear_flag(s_slider, LV_OBJ_FLAG_SCROLL_CHAIN);
-    lv_obj_set_style_bg_color(s_slider, COLOR_PANEL_HI, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(s_slider, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(s_slider, COLOR_TEXT, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(s_slider, 5, LV_PART_KNOB);
     lv_obj_set_ext_click_area(s_slider, 14);
     lv_obj_add_event_cb(s_slider, on_slider, LV_EVENT_VALUE_CHANGED, nullptr);
     lv_obj_add_event_cb(s_slider, on_slider, LV_EVENT_RELEASED, nullptr);
+    lv_obj_add_event_cb(s_night_sw, on_night, LV_EVENT_VALUE_CHANGED, nullptr);
+    lv_obj_add_event_cb(objects.btn_system_wifi, on_portal, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(objects.btn_system_sync, on_sync, LV_EVENT_CLICKED, nullptr);
 
-    s_night_sw = make_switch(tile, 64, "หรี่จอกลางคืน", on_night);
+    bind_row(ROW_WIFI, objects.label_system_wifi_icon, objects.label_system_wifi_text);
+    bind_row(ROW_IP, objects.label_system_ip_icon, objects.label_system_ip_text);
+    bind_row(ROW_SYNC, objects.label_system_sync_icon, objects.label_system_sync_text);
+    bind_row(ROW_UPTIME, objects.label_system_uptime_icon, objects.label_system_uptime_text);
+    bind_row(ROW_BATTERY, objects.label_system_battery_icon, objects.label_system_battery_text);
+    bind_row(ROW_CITY, objects.label_system_city_icon, objects.label_system_city_text);
 
-    make_button(tile, 368, LV_SYMBOL_WIFI "  ตั้งค่า WiFi", on_portal);
-    make_button(tile, 500, LV_SYMBOL_REFRESH "  ซิงค์เวลา", on_sync);
-
-    // Left column: info rows.
-    const lv_coord_t y0 = 10;
-    const lv_coord_t step = 28;
-    make_row(ROW_WIFI, y0, LV_SYMBOL_WIFI, 150);
-    make_row(ROW_IP, y0 + step, SYM_GLOBE, 310);
-    make_row(ROW_SYNC, y0 + step * 2, SYM_SATELLITE, 310);
-    make_row(ROW_UPTIME, y0 + step * 3, SYM_CLOCK, 310);
-    if (s_has_pmu) {
-        make_row(ROW_BATTERY, y0 + step * 4, LV_SYMBOL_BATTERY_FULL, 310);
-        make_row(ROW_CITY, y0 + step * 5, SYM_PIN, 310);
-    } else {
-        make_row(ROW_CITY, y0 + step * 4, SYM_PIN, 310);
-        make_row(ROW_BATTERY, y0 + step * 5, LV_SYMBOL_BATTERY_FULL, 310);
+    if (!s_has_pmu) {
+        const lv_coord_t city_y = lv_obj_get_y(s_icons[ROW_BATTERY]);
+        const lv_coord_t battery_y = lv_obj_get_y(s_icons[ROW_CITY]);
+        lv_obj_set_y(s_icons[ROW_CITY], city_y);
+        lv_obj_set_y(s_text[ROW_CITY].obj, city_y);
+        lv_obj_set_y(s_icons[ROW_BATTERY], battery_y);
+        lv_obj_set_y(s_text[ROW_BATTERY].obj, battery_y);
         lv_obj_add_flag(s_icons[ROW_BATTERY], LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_text[ROW_BATTERY].obj, LV_OBJ_FLAG_HIDDEN);
     }
 
-    for (int i = 0; i < BAR_COUNT; i++) {
-        const lv_coord_t h = 5 + i * 4;
-        s_bars[i] = lv_obj_create(tile);
-        ui_strip_obj(s_bars[i]);
-        lv_obj_clear_flag(s_bars[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_size(s_bars[i], 4, h);
-        lv_obj_set_pos(s_bars[i], 200 + i * 7, y0 + 18 - h);
-        lv_obj_set_style_bg_opa(s_bars[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(s_bars[i], 1, 0);
-    }
-    s_dbm.obj = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
+    s_bars[0] = objects.cont_system_bar0;
+    s_bars[1] = objects.cont_system_bar1;
+    s_bars[2] = objects.cont_system_bar2;
+    s_bars[3] = objects.cont_system_bar3;
+    s_dbm.obj = objects.label_system_dbm;
     s_dbm.txt[0] = 0;
-    lv_obj_set_pos(s_dbm.obj, 232, y0);
+    lv_label_set_text(s_dbm.obj, "—");
 
     apply_accent(COLOR_TEXT);
 }
