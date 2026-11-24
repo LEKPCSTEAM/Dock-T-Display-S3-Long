@@ -94,19 +94,22 @@ public struct ClaudeTarget: Sendable {
     public var toolName: String?
     public var toolInputJSON: String?
     public var cwd: String?
+    public var ambiguous: Bool
 
-    public init(pane: String?, pendingRequest: String?, toolName: String?, toolInputJSON: String?, cwd: String?) {
+    public init(pane: String?, pendingRequest: String?, toolName: String?, toolInputJSON: String?, cwd: String?,
+                ambiguous: Bool = false) {
         self.pane = pane
         self.pendingRequest = pendingRequest
         self.toolName = toolName
         self.toolInputJSON = toolInputJSON
         self.cwd = cwd
+        self.ambiguous = ambiguous
     }
 }
 
 public struct ClaudeResponder: Sendable {
-    private static let paneFormat =
-        "#{pane_current_command}\t#{pane_synchronized}\t#{pane_in_mode}\t#{pane_input_off}\t#{session_name}"
+    private static let paneFormat = "#{pane_current_command}\t#{pane_synchronized}\t#{pane_in_mode}"
+        + "\t#{pane_input_off}\t#{pane_width}\t#{session_name}"
     private static let clientFormat = "#{client_tty}\t#{client_session}\t#{client_activity}"
 
     private let runner: any TmuxRunner
@@ -127,6 +130,7 @@ public struct ClaudeResponder: Sendable {
         if req.action.answersPrompt {
             guard let pending = target.pendingRequest, !pending.isEmpty, pending == req.request
             else { return refuse("stale") }
+            guard !target.ambiguous else { return refuse("unverifiable") }
         }
         guard let info = paneInfo(pane) else { return refuse("tmux") }
         if req.action != .focus {
@@ -136,7 +140,7 @@ public struct ClaudeResponder: Sendable {
         }
         let reason: String
         switch req.action {
-        case .approve, .always, .deny: reason = answer(req.action, target, pane)
+        case .approve, .always, .deny: reason = answer(req.action, target, pane, width: info.width)
         case .interrupt: reason = interrupt(pane)
         case .focus: reason = focus(pane, session: info.session)
         }
@@ -148,13 +152,23 @@ public struct ClaudeResponder: Sendable {
         return PermissionPromptMatcher.parse(shot) != nil
     }
 
-    private func answer(_ action: ClaudeActionKind, _ target: ClaudeTarget, _ pane: String) -> String {
+    // True only while this target's own dialog is on screen.
+    public func promptVisible(pane: String, target: ClaudeTarget) -> Bool {
+        guard let pane = Self.validPane(pane), let info = paneInfo(pane), let shot = capture(pane),
+              let screen = PermissionPromptMatcher.parse(shot) else { return false }
+        guard let tool = target.toolName, let input = target.toolInputJSON,
+              let hints = PromptHints.from(toolName: tool, toolInputJSON: input, cwd: target.cwd) else { return true }
+        return PermissionPromptMatcher.matches(screen, hints, paneWidth: info.width)
+    }
+
+    private func answer(_ action: ClaudeActionKind, _ target: ClaudeTarget, _ pane: String, width: Int) -> String {
         guard let tool = target.toolName, let input = target.toolInputJSON,
               let hints = PromptHints.from(toolName: tool, toolInputJSON: input, cwd: target.cwd)
         else { return "unverifiable" }
+        if action == .always, hints.alwaysPrefixes.isEmpty { return "unverifiable" }
         guard let shot = capture(pane) else { return "tmux" }
         guard let screen = PermissionPromptMatcher.parse(shot) else { return "no_prompt" }
-        guard PermissionPromptMatcher.matches(screen, hints) else { return "mismatch" }
+        guard PermissionPromptMatcher.matches(screen, hints, paneWidth: width) else { return "mismatch" }
         let key: Character
         switch action {
         case .always:
@@ -195,13 +209,13 @@ public struct ClaudeResponder: Sendable {
         return ""
     }
 
-    private func paneInfo(_ pane: String) -> (command: String, flags: [String], session: String)? {
+    private func paneInfo(_ pane: String) -> (command: String, flags: [String], width: Int, session: String)? {
         guard let out = try? runner.run(["display-message", "-p", "-t", pane, Self.paneFormat]),
               let line = out.split(separator: "\n", omittingEmptySubsequences: false).first
         else { return nil }
-        let fields = line.split(separator: "\t", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
-        guard fields.count == 5 else { return nil }
-        return (fields[0], Array(fields[1...3]), fields[4])
+        let fields = line.split(separator: "\t", maxSplits: 5, omittingEmptySubsequences: false).map(String.init)
+        guard fields.count == 6, let width = Int(fields[4]), width > 0 else { return nil }
+        return (fields[0], Array(fields[1...3]), width, fields[5])
     }
 
     private func capture(_ pane: String) -> String? {

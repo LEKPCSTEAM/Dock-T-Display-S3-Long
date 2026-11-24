@@ -26,11 +26,13 @@ private final class Activations: @unchecked Sendable {
 }
 
 func paneReply(_ command: String, sync: String = "0", mode: String = "0", inputOff: String = "0",
-               session: String = "T-Display-S3-Long") -> String {
-    [command, sync, mode, inputOff, session].joined(separator: "\t")
+               width: String = "173", session: String = "T-Display-S3-Long") -> String {
+    [command, sync, mode, inputOff, width, session].joined(separator: "\t")
 }
 
-private let paneFormat = "#{pane_current_command}\t#{pane_synchronized}\t#{pane_in_mode}\t#{pane_input_off}\t#{session_name}"
+private let paneFormat = "#{pane_current_command}\t#{pane_synchronized}\t#{pane_in_mode}\t#{pane_input_off}"
+    + "\t#{pane_width}\t#{session_name}"
+private let promptF8Framed = promptScreen([promptRule]) + promptF8
 private let clientFormat = "#{client_tty}\t#{client_session}\t#{client_activity}"
 private let displayCall = ["display-message", "-p", "-t", "%37", paneFormat]
 private let captureCall = ["capture-pane", "-p", "-t", "%37"]
@@ -114,7 +116,7 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
     }
 
     @Test func noFirstVariantDenySendsOne() {
-        let tmux = FakeTmux(capture: promptF8)
+        let tmux = FakeTmux(capture: promptF8Framed)
         #expect(responder(tmux).handle(act(.deny), target: target(input: curlInput)) == okAck)
         #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "1"]])
     }
@@ -208,7 +210,9 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
         #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"))
         tmux.failing = []
         tmux.calls = []
-        for reply in ["2.1.331 no tab", "2.1.331\tT-Display-S3-Long", "2.1.331\t0\t0\tT-Display-S3-Long"] {
+        for reply in ["2.1.331 no tab", "2.1.331\tT-Display-S3-Long", "2.1.331\t0\t0\tT-Display-S3-Long",
+                      "2.1.331\t0\t0\t0\tT-Display-S3-Long", paneReply("2.1.331", width: "x"),
+                      paneReply("2.1.331", width: "0")] {
             tmux.outputs["display-message"] = reply
             #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"), "\(reply)")
         }
@@ -246,6 +250,53 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
         #expect(tmux.keys.isEmpty)
     }
 
+    @Test func softWrapNeedsRowFillingPane() {
+        let commit = target(input: commitInput)
+        let full = FakeTmux(capture: promptF7WordWrap)
+        full.outputs["display-message"] = paneReply("2.1.331", width: "61")
+        #expect(responder(full).handle(act(.approve), target: commit) == okAck)
+        let wide = FakeTmux(capture: promptF7WordWrap)
+        #expect(responder(wide).handle(act(.approve), target: commit) == refused("mismatch"))
+        #expect(wide.keys.isEmpty)
+    }
+
+    @Test func queuedLookAlikeIsUnverifiable() throws {
+        let edit1 = #","tool_name":"Edit","tool_input":{"file_path":"/tmp/work/T-Display-S3-Long/src/main.cpp","new_string":"b","old_string":"a"}"#
+        let edit2 = #","tool_name":"Edit","tool_input":{"file_path":"/tmp/work/T-Display-S3-Long/src/main.cpp","new_string":"d","old_string":"c"}"#
+        var store = ClaudeStore(runTag: "a3f9")
+        store.apply(try #require(ClaudeHookEvent.decode(hookJSON(claudeA, "PermissionRequest", extra: edit1))), pane: "%37", now: 1)
+        store.apply(try #require(ClaudeHookEvent.decode(hookJSON(claudeA, "PermissionRequest", extra: edit2))), pane: "%37", now: 2)
+        let tmux = FakeTmux(capture: promptF3)
+        let t = try #require(store.target(session: claudeA))
+        #expect(t.ambiguous)
+        #expect(responder(tmux).handle(act(.approve), target: t) == refused("unverifiable"))
+        #expect(responder(tmux).handle(act(.deny), target: t) == refused("unverifiable"))
+        #expect(tmux.calls.isEmpty)
+        var unambiguous = t
+        unambiguous.ambiguous = false
+        #expect(responder(tmux).handle(act(.approve), target: unambiguous) == okAck)
+    }
+
+    @Test func promptVisibleForTargetNeedsItsOwnDialog() {
+        #expect(responder(FakeTmux(capture: promptF1)).promptVisible(pane: "%37", target: target()))
+        #expect(!responder(FakeTmux(capture: promptF6)).promptVisible(pane: "%37", target: target()))
+        #expect(!responder(FakeTmux(capture: promptF5)).promptVisible(pane: "%37", target: target()))
+        #expect(responder(FakeTmux(capture: promptF6)).promptVisible(pane: "%37", target: target(tool: "WebFetch")))
+        let broken = FakeTmux(capture: promptF1)
+        broken.failing = ["display-message"]
+        #expect(!responder(broken).promptVisible(pane: "%37", target: target()))
+        #expect(!responder(FakeTmux(capture: promptF1)).promptVisible(pane: "%3a", target: target()))
+    }
+
+    @Test func alwaysRefusedForFileTools() {
+        let tmux = FakeTmux(capture: promptF3)
+        let edit = target(tool: "Edit", input: #"{"file_path":"/tmp/work/T-Display-S3-Long/src/main.cpp"}"#)
+        #expect(responder(tmux).handle(act(.always), target: edit) == refused("unverifiable"))
+        #expect(!tmux.calls.contains { $0.first == "capture-pane" })
+        #expect(responder(tmux).handle(act(.approve), target: edit) == okAck)
+        #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "1"]])
+    }
+
     @Test func alwaysRefusedWhenRowBelongsToOtherTool() {
         let editRow = "   2. Yes, allow all edits during this session (shift+tab)"
         let tmux = FakeTmux(capture: bashDialog(["pio run -e ntp_clock", "Build firmware"], always: editRow))
@@ -257,7 +308,8 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
 
     @Test func alwaysRefusedWithTwoAlwaysRows() {
         let tmux = FakeTmux(capture: promptScreen([
-            promptRule, " Bash command", "", "   pio run -e ntp_clock", "   Build firmware", "", " ❯ 1. Yes",
+            promptRule, " Bash command", "", "   pio run -e ntp_clock", "   Build firmware", "",
+            " Do you want to proceed?", " ❯ 1. Yes",
             "   2. Yes, and don't ask again for pio run commands in /tmp/work/T-Display-S3-Long",
             "   3. Yes, and don't ask again for pio commands in /tmp/work",
             "   4. No, and tell Claude what to do differently (esc)",

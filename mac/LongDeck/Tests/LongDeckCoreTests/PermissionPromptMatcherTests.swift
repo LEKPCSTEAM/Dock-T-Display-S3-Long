@@ -238,14 +238,35 @@ let hk1Hints = hints("Bash", hk1Input)!
 
     @Test func handlesWrappedCommand() throws {
         let h = try #require(hints("Bash", commitInput))
-        #expect(PermissionPromptMatcher.matches(try screenOf(promptF7WordWrap), h))
-        #expect(!PermissionPromptMatcher.matches(try screenOf(promptF7), h))
+        let words = try screenOf(promptF7WordWrap)
+        #expect(PermissionPromptMatcher.matches(words, h, paneWidth: 61))
+        #expect(!PermissionPromptMatcher.matches(words, h, paneWidth: 62))
+        #expect(!PermissionPromptMatcher.matches(words, h))
+        #expect(!PermissionPromptMatcher.matches(try screenOf(promptF7), h, paneWidth: 63))
     }
 
     @Test func midWordWrapIsAmbiguous() throws {
         let s = try screenOf(bashDialog(["rm -rf /tmp", "/x"]))
-        #expect(!PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("rm -rf /tmp/x")))))
-        #expect(PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("rm -rf /tmp /x")))))
+        #expect(!PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("rm -rf /tmp/x"))), paneWidth: 15))
+        #expect(PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("rm -rf /tmp /x"))), paneWidth: 15))
+    }
+
+    @Test func fullRowCannotEndALine() throws {
+        let s = try screenOf(bashDialog(["echo", "rm"]))
+        let twoLines = try #require(hints("Bash", bashInput("echo\nrm")))
+        let oneLine = try #require(hints("Bash", bashInput("echo rm")))
+        #expect(PermissionPromptMatcher.matches(s, twoLines))
+        #expect(!PermissionPromptMatcher.matches(s, oneLine))
+        #expect(PermissionPromptMatcher.matches(s, oneLine, paneWidth: 8))
+        #expect(!PermissionPromptMatcher.matches(s, twoLines, paneWidth: 8))
+    }
+
+    @Test func displayWidthCountsWideCharacters() {
+        #expect(PermissionPromptMatcher.displayWidth("abc") == 3)
+        #expect(PermissionPromptMatcher.displayWidth("日本") == 4)
+        #expect(PermissionPromptMatcher.displayWidth("กิน") == 2)
+        #expect(PermissionPromptMatcher.displayWidth("❯ ⏺ …") == 5)
+        #expect(PermissionPromptMatcher.displayWidth("🚀") == 2)
     }
 
     @Test func readsNoFirstVariant() throws {
@@ -253,7 +274,8 @@ let hk1Hints = hints("Bash", hk1Input)!
         #expect(s.no == "1")
         #expect(s.yes == "2")
         #expect(s.always == nil)
-        #expect(PermissionPromptMatcher.matches(s, try #require(hints("Bash", curlInput))))
+        let framed = try screenOf(promptScreen([promptRule]) + promptF8)
+        #expect(PermissionPromptMatcher.matches(framed, try #require(hints("Bash", curlInput))))
     }
 
     @Test func stripsBoxBorders() throws {
@@ -269,20 +291,23 @@ let hk1Hints = hints("Bash", hk1Input)!
 
     @Test func hintsPerTool() throws {
         #expect(hk1Hints == PromptHints(titles: ["Bash command"], bodies: [["pio run -e ntp_clock"]],
-                                        detail: ["Build firmware"], alwaysPrefixes: ["Yes, and don't ask again for "]))
+                                        detail: ["Build firmware"], question: "Do you want to proceed?",
+                                        alwaysPrefixes: ["Yes, and don't ask again for "]))
         let edit = try #require(hints("Edit", #"{"file_path":"/tmp/work/T-Display-S3-Long/src/main.cpp"}"#))
         #expect(edit.bodies == [["src/main.cpp"], ["/tmp/work/T-Display-S3-Long/src/main.cpp"]])
         #expect(edit.titles == ["Edit file", "Create file", "Overwrite file", "Write file"])
-        #expect(edit.alwaysPrefixes == ["Yes, allow all edits "])
+        #expect(edit.alwaysPrefixes == [])
+        #expect(edit.question == nil)
         #expect(hints("Bash", #"{"command":""}"#) == nil)
         #expect(hints("Bash", #"{"command":"  \n \n"}"#) == nil)
+        #expect(hints("Bash", #"{"command":"ls","description":7}"#) == nil)
         #expect(hints("mcp__x__do it", "{}") == nil)
-        #expect(hints("Bash", #"{"command":"\n  echo   1 \n\n  echo 2\n"}"#)?.bodies == [["echo 1", "", "echo 2"]])
+        #expect(hints("Bash", #"{"command":"\n  echo   1 \n\n  echo 2\n"}"#)?.bodies == [["echo   1", "", "echo 2"]])
     }
 
     @Test func hintsForFilesAndBadInput() {
         #expect(hints("Read", #"{"file_path":"/a/b/my  notes.txt"}"#)
-            == PromptHints(titles: ["Read file"], bodies: [["/a/b/my notes.txt"]], alwaysPrefixes: ["Yes, allow reading from "]))
+            == PromptHints(titles: ["Read file"], bodies: [["/a/b/my  notes.txt"]]))
         #expect(hints("Write", #"{"file_path":"/tmp/work/T-Display-S3-Long/a.txt"}"#)?.bodies
             == [["a.txt"], ["/tmp/work/T-Display-S3-Long/a.txt"]])
         let edit = #"{"file_path":"/x/a.c"}"#
@@ -425,6 +450,67 @@ let hk1Hints = hints("Bash", hk1Input)!
         #expect(PermissionPromptMatcher.parse(promptScreen(head + [yes, no, "❯ "])) == nil)
         #expect(PermissionPromptMatcher.parse(promptScreen(head + [yes, no] + Array(repeating: "x", count: 15))) == nil)
         #expect(PermissionPromptMatcher.parse(promptScreen(head + [yes, no] + Array(repeating: "x", count: 14))) != nil)
+    }
+
+    @Test func blankRowInsideCommandIsNotTheEnd() throws {
+        let s = try screenOf(bashDialog(["npm test", "", "rm -rf ~", "Run tests"]))
+        #expect(!PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("npm test")))))
+        #expect(!PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("npm test", "Run tests")))))
+    }
+
+    @Test func lineBreakIsNotAWrap() throws {
+        let s = try screenOf(bashDialog(["echo", "rm -rf ~"]))
+        #expect(!PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("echo rm -rf ~")))))
+    }
+
+    @Test func descriptionIsNotTheWrappedCommandEnd() throws {
+        let h = try #require(hints("Bash", bashInput("pio run -e ntp_clock Build firmware")))
+        #expect(!PermissionPromptMatcher.matches(try screenOf(promptF1), h))
+    }
+
+    @Test func secondCommandLineIsNotTheDescription() throws {
+        let s = try screenOf(bashDialog(["npm test", "rm -rf ~", "Run tests"]))
+        #expect(!PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("npm test", "rm -rf ~")))))
+        #expect(PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("npm test\nrm -rf ~", "Run tests")))))
+    }
+
+    @Test func descriptionMustMatchExactly() throws {
+        #expect(!PermissionPromptMatcher.matches(try screenOf(bashDialog(["pio run -e ntp_clock"])), hk1Hints))
+        #expect(!PermissionPromptMatcher.matches(try screenOf(bashDialog(["pio run -e ntp_clock", "Build firmware!"])), hk1Hints))
+        let bare = try #require(hints("Bash", bashInput("pio run -e ntp_clock")))
+        #expect(!PermissionPromptMatcher.matches(try screenOf(promptF1), bare))
+    }
+
+    @Test func onlyBlankRowsThenExactQuestion() throws {
+        func dialog(_ tail: [String]) -> String {
+            promptScreen([promptRule, " Bash command", "", "   pio run -e ntp_clock", "   Build firmware"] + tail
+                + [" ❯ 1. Yes", "   2. No, and tell Claude what to do differently (esc)"])
+        }
+        #expect(!PermissionPromptMatcher.matches(try screenOf(dialog(["", " Note: runs in /tmp", " Do you want to proceed?"])), hk1Hints))
+        #expect(!PermissionPromptMatcher.matches(try screenOf(dialog(["", " Do you want to proceed with this?"])), hk1Hints))
+        #expect(!PermissionPromptMatcher.matches(try screenOf(dialog([""])), hk1Hints))
+        #expect(!PermissionPromptMatcher.matches(try screenOf(dialog(["", " Do you want to proceed?", " (esc to cancel)"])), hk1Hints))
+        #expect(PermissionPromptMatcher.matches(try screenOf(dialog(["", "", " Do you want to proceed?", ""])), hk1Hints))
+    }
+
+    @Test func titleMustSitBelowDialogTopBorder() throws {
+        #expect(!PermissionPromptMatcher.matches(try screenOf(promptF8), try #require(hints("Bash", curlInput))))
+        let body = ["", "   pio run -e ntp_clock", "   Build firmware", "", " Do you want to proceed?", " ❯ 1. Yes",
+                    "   2. No, and tell Claude what to do differently (esc)"]
+        let tall = (1...6).map { "   line \($0)" } + ["    Bash command"] + body
+        #expect(!PermissionPromptMatcher.matches(try screenOf(promptScreen(tall)), hk1Hints))
+        let indentedRule = ["   " + String(repeating: "─", count: 60), " Bash command"] + body
+        #expect(!PermissionPromptMatcher.matches(try screenOf(promptScreen(indentedRule)), hk1Hints))
+        let dashedRule = [String(repeating: "╌", count: 60), " Bash command"] + body
+        #expect(!PermissionPromptMatcher.matches(try screenOf(promptScreen(dashedRule)), hk1Hints))
+        #expect(PermissionPromptMatcher.matches(try screenOf(promptScreen([promptRule, " Bash command"] + body)), hk1Hints))
+    }
+
+    @Test func pathsCompareExactly() throws {
+        let h = try #require(hints("Edit", #"{"file_path":"/tmp/work/T-Display-S3-Long/my  docs/a.txt"}"#))
+        let diff = ["  1 -  a", "  1 +  b"]
+        #expect(!PermissionPromptMatcher.matches(try screenOf(fileDialog("Edit file", "my docs/a.txt", diff)), h))
+        #expect(PermissionPromptMatcher.matches(try screenOf(fileDialog("Edit file", "my  docs/a.txt", diff)), h))
     }
 
     @Test func regionIsThirtyRowsAboveFirstOption() throws {

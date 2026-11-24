@@ -81,8 +81,78 @@ private func json(_ body: String) throws -> [String: Any] {
         var store = ClaudeStore(runTag: "a3f9")
         feed(&store, hk1, at: at(0))
         feed(&store, hk1, at: at(1))
-        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-2")
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-1")
         #expect(store.pendingPrompts().count == 1)
+        store.resolve(session: claudeA, request: "a3f9-1", state: .working, now: at(2))
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-2")
+    }
+
+    @Test func pendingRequestsQueueOldestFirst() {
+        let ls = #","tool_name":"Bash","tool_input":{"command":"ls"}"#
+        let pwd = #","tool_name":"Bash","tool_input":{"command":"pwd"}"#
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hk1, pane: "%37", at: at(0))
+        feed(&store, hookJSON(claudeA, "PermissionRequest", extra: ls), at: at(1))
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-1")
+        #expect(store.pendingPrompts().map(\.pending.request) == ["a3f9-1"])
+        feed(&store, hookJSON(claudeA, "PostToolUse", extra: ls), at: at(2))
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-1")
+        #expect(store.sessions[claudeA]?.state == .permission)
+        feed(&store, hookJSON(claudeA, "PermissionRequest", extra: pwd), at: at(3))
+        store.resolve(session: claudeA, request: "a3f9-1", state: .working, now: at(4))
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-3")
+        #expect(store.sessions[claudeA]?.state == .permission)
+        feed(&store, hookJSON(claudeA, "PostToolUse", extra: pwd), at: at(5))
+        #expect(store.sessions[claudeA]?.pending == nil)
+        #expect(store.sessions[claudeA]?.state == .working)
+    }
+
+    @Test func targetFlagsLookAlikeQueuedRequests() throws {
+        let described = #","tool_name":"Bash","tool_input":{"command":"npm test","description":"rm -rf ~"}"#
+        let twoLines = #","tool_name":"Bash","tool_input":{"command":"npm test\nrm -rf ~"}"#
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hookJSON(claudeA, "PermissionRequest", extra: described), pane: "%37", at: at(0))
+        feed(&store, hookJSON(claudeA, "PermissionRequest", extra: twoLines), at: at(1))
+        let t = try #require(store.target(session: claudeA))
+        #expect(t.ambiguous)
+        #expect(t.pendingRequest == "a3f9-1")
+        #expect(t.pane == "%37")
+        #expect(t.cwd == claudeCwd)
+        #expect(t.toolName == "Bash")
+        #expect(store.sessions[claudeA]?.pendingCount == 2)
+
+        var distinct = ClaudeStore(runTag: "a3f9")
+        feed(&distinct, hk1, at: at(0))
+        feed(&distinct, hookJSON(claudeA, "PermissionRequest", extra: #","tool_name":"Bash","tool_input":{"command":"ls"}"#), at: at(1))
+        #expect(distinct.target(session: claudeA)?.ambiguous == false)
+
+        var duplicate = ClaudeStore(runTag: "a3f9")
+        feed(&duplicate, hk1, at: at(0))
+        feed(&duplicate, hk1, at: at(1))
+        #expect(duplicate.target(session: claudeA)?.ambiguous == false)
+        #expect(duplicate.target(session: claudeB) == nil)
+    }
+
+    @Test func queueIsCapped() {
+        var store = ClaudeStore(runTag: "a3f9")
+        for i in 0..<20 {
+            let extra = #","tool_name":"Bash","tool_input":{"command":"echo \#(i)"}"#
+            feed(&store, hookJSON(claudeA, "PermissionRequest", extra: extra), at: at(TimeInterval(i)))
+        }
+        #expect(store.sessions[claudeA]?.pendingCount == 16)
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-1")
+        #expect(store.sessions[claudeA]?.queue.last?.request == "a3f9-16")
+    }
+
+    @Test func promptCheckAdvancesQueue() {
+        var store = ClaudeStore(runTag: "a3f9")
+        feed(&store, hk1, at: at(0))
+        feed(&store, hookJSON(claudeA, "PermissionRequest", extra: #","tool_name":"Bash","tool_input":{"command":"ls"}"#), at: at(1))
+        #expect(!check(&store, "a3f9-1", true, 2))
+        #expect(!check(&store, "a3f9-1", false, 3))
+        #expect(check(&store, "a3f9-1", false, 4))
+        #expect(store.sessions[claudeA]?.pending?.request == "a3f9-2")
+        #expect(store.sessions[claudeA]?.state == .permission)
     }
 
     @Test func promptClearedByPromptStopAndIdle() {

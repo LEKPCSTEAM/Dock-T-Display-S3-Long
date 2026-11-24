@@ -22,7 +22,10 @@ public struct ClaudeSession: Equatable, Sendable {
     public var model: String?
     public var costUSD: Double?
     public var contextPct: Double?
-    public var pending: ClaudePending?
+    public var queue: [ClaudePending] = []
+
+    public var pending: ClaudePending? { queue.first }
+    public var pendingCount: Int { queue.count }
 }
 
 public struct ClaudeStore: Sendable {
@@ -31,6 +34,7 @@ public struct ClaudeStore: Sendable {
     private static let maxSessions = 8
     public static let tombstoneTTL: TimeInterval = 600
     private static let maxIdBytes = 39
+    private static let maxQueue = 16
 
     private let runTag: String
     private var requestCount = 0
@@ -63,37 +67,40 @@ public struct ClaudeStore: Sendable {
         }
         switch e.event {
         case "SessionStart":
-            s.pending = nil
+            s.queue = []
             set(&s, .waiting, now)
         case "UserPromptSubmit":
-            s.pending = nil
+            s.queue = []
             set(&s, .working, now)
         case "PreToolUse":
-            if s.pending == nil { set(&s, .working, now) }
+            if s.queue.isEmpty { set(&s, .working, now) }
         case "PermissionRequest":
-            requestCount += 1
-            s.pending = ClaudePending(request: "\(runTag)-\(requestCount)", toolName: e.toolName ?? "",
-                                      toolInputJSON: e.toolInputJSON ?? "{}", createdAt: now,
-                                      seenOnScreen: false, misses: 0)
+            // Claude Code shows parallel prompts oldest first, so queue in order.
+            if s.queue.count < Self.maxQueue {
+                requestCount += 1
+                s.queue.append(ClaudePending(request: "\(runTag)-\(requestCount)", toolName: e.toolName ?? "",
+                                             toolInputJSON: e.toolInputJSON ?? "{}", createdAt: now,
+                                             seenOnScreen: false, misses: 0))
+            }
             set(&s, .permission, now)
         case "PostToolUse":
-            if let p = s.pending {
-                if p.toolName == (e.toolName ?? ""), p.toolInputJSON == (e.toolInputJSON ?? "{}") {
-                    s.pending = nil
-                    set(&s, .working, now)
-                }
-            } else {
+            if s.queue.isEmpty {
                 set(&s, .working, now)
+            } else if let i = s.queue.firstIndex(where: {
+                $0.toolName == (e.toolName ?? "") && $0.toolInputJSON == (e.toolInputJSON ?? "{}")
+            }) {
+                s.queue.remove(at: i)
+                if s.queue.isEmpty { set(&s, .working, now) }
             }
         case "Notification":
             if e.notificationType == "permission_prompt" {
                 set(&s, .permission, now)
             } else if e.notificationType == "idle_prompt" {
-                s.pending = nil
+                s.queue = []
                 set(&s, .waiting, now)
             }
         case "Stop":
-            s.pending = nil
+            s.queue = []
             set(&s, .done, now)
         default:
             break
@@ -127,15 +134,16 @@ public struct ClaudeStore: Sendable {
     }
 
     public mutating func resolve(session: String, request: String, state: ClaudeState, now: TimeInterval) {
-        guard var s = sessions[session], s.pending?.request == request else { return }
-        s.pending = nil
-        set(&s, state, now)
+        guard var s = sessions[session], let i = s.queue.firstIndex(where: { $0.request == request }) else { return }
+        s.queue.remove(at: i)
+        set(&s, s.queue.isEmpty ? state : .permission, now)
         sessions[session] = s
     }
 
     @discardableResult
     public mutating func promptCheck(session: String, request: String, visible: Bool, now: TimeInterval) -> Bool {
-        guard var s = sessions[session], var p = s.pending, p.request == request else { return false }
+        guard var s = sessions[session], let i = s.queue.firstIndex(where: { $0.request == request }) else { return false }
+        var p = s.queue[i]
         var cleared = false
         if visible {
             p.seenOnScreen = true
@@ -145,13 +153,32 @@ public struct ClaudeStore: Sendable {
             cleared = p.misses >= 2 && (p.seenOnScreen || now - p.createdAt >= Self.unseenGrace)
         }
         if cleared {
-            s.pending = nil
-            set(&s, .working, now)
+            s.queue.remove(at: i)
+            if s.queue.isEmpty { set(&s, .working, now) }
         } else {
-            s.pending = p
+            s.queue[i] = p
         }
         sessions[session] = s
         return cleared
+    }
+
+    public func target(session id: String) -> ClaudeTarget? {
+        guard let s = sessions[id] else { return nil }
+        var target = ClaudeTarget(pane: s.pane, pendingRequest: s.pending?.request, toolName: s.pending?.toolName,
+                                  toolInputJSON: s.pending?.toolInputJSON, cwd: s.cwd)
+        if let head = s.pending {
+            target.ambiguous = s.queue.dropFirst().contains { Self.lookAlike(head, $0, cwd: s.cwd) }
+        }
+        return target
+    }
+
+    // Another queued request would render the same dialog rows.
+    private static func lookAlike(_ a: ClaudePending, _ b: ClaudePending, cwd: String?) -> Bool {
+        guard a.toolInputJSON != b.toolInputJSON || a.toolName != b.toolName else { return false }
+        guard let ha = PromptHints.from(toolName: a.toolName, toolInputJSON: a.toolInputJSON, cwd: cwd),
+              let hb = PromptHints.from(toolName: b.toolName, toolInputJSON: b.toolInputJSON, cwd: cwd)
+        else { return false }
+        return ha.titles == hb.titles && !Set(ha.renderings).isDisjoint(with: hb.renderings)
     }
 
     public func pendingPrompts() -> [(session: ClaudeSession, pending: ClaudePending)] {
@@ -224,8 +251,8 @@ public struct ClaudeStore: Sendable {
     private mutating func claimPane(_ pane: String, for id: String, now: TimeInterval) {
         for (key, var other) in sessions where key != id && other.pane == pane {
             other.pane = nil
-            if other.pending != nil {
-                other.pending = nil
+            if !other.queue.isEmpty {
+                other.queue = []
                 if other.state == .permission { set(&other, .working, now) }
             }
             sessions[key] = other
