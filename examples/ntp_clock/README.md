@@ -1,4 +1,4 @@
-# ThaiClock — นาฬิกา NTP สำหรับ T-Display-S3-Long
+# LongDeck — นาฬิกา NTP สำหรับ T-Display-S3-Long
 
 นาฬิกาตั้งโต๊ะจอ 640x180 sync เวลาจาก NTP (โซนเวลาไทย `ICT-7`) ตั้งค่า WiFi ผ่านมือถือได้ และมีเว็บตั้งค่าในวง LAN
 
@@ -14,7 +14,7 @@ pio device monitor -b 115200
 ## ตั้งค่า WiFi ครั้งแรก
 
 1. เปิดเครื่องครั้งแรก (หรือต่อ WiFi เดิมไม่ได้ใน 20 วินาที) จอจะขึ้นหน้า **ตั้งค่า WiFi** พร้อม QR
-2. สแกน QR ซ้าย หรือต่อ WiFi ชื่อ `ThaiClock-XXXX` (ไม่มีรหัส)
+2. สแกน QR ซ้าย หรือต่อ WiFi ชื่อ `LongDeck-XXXX` (ไม่มีรหัส)
 3. หน้า captive portal เปิดเอง (หรือเข้า `http://192.168.4.1`) เลือก WiFi บ้าน ใส่รหัส แล้วกดบันทึก
 4. ต่อสำเร็จจะบันทึกลง NVS แล้วกลับหน้านาฬิกาเอง — ถ้ารหัสผิด ค่าเดิมยังอยู่
 
@@ -27,7 +27,7 @@ pio device monitor -b 115200
 | ปัดซ้าย/ขวา หรือกดปุ่ม BOOT | เปลี่ยนหน้า: นาฬิกา → ปฏิทิน/นาฬิกาเข็ม → Focus timer → System |
 | แตะตัวเลขเวลาในหน้าแรก | สลับธีม สีประจำวัน / สีรุ้ง / ขาวเรียบ |
 | หน้า Focus: แตะ / กดค้าง | เริ่ม-หยุด Pomodoro / รีเซ็ต |
-| เปิด `http://thaiclock.local` | เว็บตั้งค่า: ความสว่าง, หรี่จอกลางคืน, ธีม, เมืองสำหรับพยากรณ์อากาศ, sync เวลา, เปลี่ยน WiFi |
+| เปิด `http://longdeck.local` | เว็บตั้งค่า: ความสว่าง, หรี่จอกลางคืน, ธีม, เมืองสำหรับพยากรณ์อากาศ, sync เวลา, เปลี่ยน WiFi |
 
 ## ลูกเล่น
 
@@ -39,9 +39,9 @@ pio device monitor -b 115200
 
 ## แก้หน้าตาด้วย EEZ Studio
 
-Layout และ style ของทุกหน้าอยู่ใน `eez/thaiclock.eez-project` (LVGL 8.4.0, 640x180, ไม่ใช้ Flow) ส่วน logic ทั้งหมดอยู่ใน C++
+Layout และ style ของทุกหน้าอยู่ใน `eez/longdeck.eez-project` (LVGL 8.4.0, 640x180, ไม่ใช้ Flow) ส่วน logic ทั้งหมดอยู่ใน C++
 
-1. เปิด `eez/thaiclock.eez-project` ใน EEZ Studio แล้วแก้ตำแหน่ง/สี/font ได้เลย
+1. เปิด `eez/longdeck.eez-project` ใน EEZ Studio แล้วแก้ตำแหน่ง/สี/font ได้เลย
 2. กด **Build** — โค้ดจะถูกสร้างใน `eez/gen/` (ห้ามแก้ไฟล์ใน `gen/` ด้วยมือ)
 3. `pio run -e ntp_clock -t upload`
 

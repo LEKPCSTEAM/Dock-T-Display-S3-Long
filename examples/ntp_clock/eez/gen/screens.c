@@ -863,7 +863,7 @@ void create_screen_system_page() {
             lv_label_set_long_mode(obj, LV_LABEL_LONG_DOT);
             lv_obj_set_style_text_font(obj, &ui_font_th_16, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][3]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_label_set_text(obj, "IP 192.168.1.42 · thaiclock.local");
+            lv_label_set_text(obj, "IP 192.168.1.42 · longdeck.local");
         }
         {
             // label_system_sync_icon
@@ -988,7 +988,7 @@ void create_screen_portal_page() {
                     objects.qrcode_portal_wifi = obj;
                     lv_obj_set_pos(obj, 0, 0);
                     lv_obj_set_size(obj, 134, 134);
-                    lv_qrcode_update(obj, "WIFI:T:nopass;S:ThaiClock-D5C0;;", 32);
+                    lv_qrcode_update(obj, "WIFI:T:nopass;S:LongDeck-D5C0;;", 31);
                     lv_obj_set_style_align(obj, LV_ALIGN_CENTER, LV_PART_MAIN | LV_STATE_DEFAULT);
                 }
             }
@@ -1011,7 +1011,7 @@ void create_screen_portal_page() {
             lv_obj_set_size(obj, 330, LV_SIZE_CONTENT);
             lv_obj_set_style_text_font(obj, &ui_font_th_16, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][3]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_label_set_text_static(obj, "1) สแกน QR หรือต่อ WiFi: ThaiClock-D5C0");
+            lv_label_set_text_static(obj, "1) สแกน QR หรือต่อ WiFi: LongDeck-D5C0");
         }
         {
             // label_portal_step2
@@ -1140,7 +1140,7 @@ void create_screen_splash_page() {
             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
             lv_obj_set_style_text_font(obj, &ui_font_th_32, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][3]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_label_set_text_static(obj, "นาฬิกาไทย");
+            lv_label_set_text_static(obj, "LongDeck");
         }
         {
             // label_splash_subtitle
@@ -1150,7 +1150,7 @@ void create_screen_splash_page() {
             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
             lv_obj_set_style_text_font(obj, &ui_font_th_16, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][4]), LV_PART_MAIN | LV_STATE_DEFAULT);
-            lv_label_set_text_static(obj, "ThaiClock");
+            lv_label_set_text_static(obj, "นาฬิกา · Mac Deck");
         }
         {
             // cont_splash_underline

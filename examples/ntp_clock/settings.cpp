@@ -3,7 +3,8 @@
 #include <string.h>
 #include "app_state.h"
 
-#define NVS_NS "thaiclock"
+#define NVS_NS     "longdeck"
+#define NVS_NS_OLD "thai" "clock"
 
 static SemaphoreHandle_t s_mutex;
 static ClockSettings     s_cur;
@@ -41,8 +42,45 @@ static void unlock()
     if (s_mutex) xSemaphoreGive(s_mutex);
 }
 
+static void copy_str(Preferences &from, Preferences &to, const char *key)
+{
+    if (!from.isKey(key)) return;
+    String v = from.getString(key, "");
+    to.putString(key, v);
+}
+
+static void migrate_old_namespace()
+{
+    Preferences dst;
+    if (!dst.begin(NVS_NS, false)) return;
+    if (dst.isKey("ssid")) {
+        dst.end();
+        return;
+    }
+    Preferences src;
+    if (!src.begin(NVS_NS_OLD, false)) {
+        dst.end();
+        return;
+    }
+    if (src.isKey("ssid") || src.isKey("bright")) {
+        if (src.isKey("bright")) dst.putUChar("bright", src.getUChar("bright", 200));
+        if (src.isKey("night")) dst.putBool("night", src.getBool("night", true));
+        if (src.isKey("theme")) dst.putUChar("theme", src.getUChar("theme", THEME_DAY_COLOR));
+        if (src.isKey("lat")) dst.putFloat("lat", src.getFloat("lat", 13.7563f));
+        if (src.isKey("lon")) dst.putFloat("lon", src.getFloat("lon", 100.5018f));
+        copy_str(src, dst, "city");
+        copy_str(src, dst, "ssid");
+        copy_str(src, dst, "pass");
+        src.clear();
+        Serial.println("[settings] migrated legacy NVS namespace");
+    }
+    src.end();
+    dst.end();
+}
+
 void settings_begin()
 {
+    migrate_old_namespace();
     s_mutex = xSemaphoreCreateMutex();
     lock();
     ClockSettings s = defaults();

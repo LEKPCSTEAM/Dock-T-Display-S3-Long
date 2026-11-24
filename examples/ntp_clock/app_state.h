@@ -8,8 +8,8 @@
 #define CLOCK_NTP_1       "time.navy.mi.th"
 #define CLOCK_NTP_2       "clock.nectec.or.th"
 #define CLOCK_NTP_3       "th.pool.ntp.org"
-#define CLOCK_HOSTNAME    "thaiclock"
-#define CLOCK_AP_PREFIX   "ThaiClock-"
+#define CLOCK_HOSTNAME    "longdeck"
+#define CLOCK_AP_PREFIX   "LongDeck-"
 #define CLOCK_PORTAL_IP   "192.168.4.1"
 
 enum ClockTheme : uint8_t {

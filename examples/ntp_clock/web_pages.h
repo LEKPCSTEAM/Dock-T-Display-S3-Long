@@ -108,7 +108,7 @@ setTimeout(poll,1000)}).catch(function(){setTimeout(poll,1500)})};
 static const char LAN_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>นาฬิกาไทย</title>
+<title>LongDeck</title>
 <style>
 :root{--bg:#0f131a;--card:#182030;--line:#27324a;--fg:#e8edf6;--mut:#8b97ad;--acc:#4da3ff;--ok:#3ecf8e;--bad:#ff6b6b}
 *{box-sizing:border-box}
@@ -133,7 +133,7 @@ button:active{opacity:.7}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#2a3552;padding:10px 18px;border-radius:20px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%}
 #toast.on{opacity:1}
 </style></head><body>
-<h1>นาฬิกาไทย</h1>
+<h1>LongDeck</h1>
 <div class="card"><div id="clk">--:--:--</div>
 <div class="kv"><span>ซิงค์เวลาล่าสุด</span><span id="sync">-</span></div>
 <div class="kv"><span>WiFi</span><span id="wifi">-</span></div>
@@ -190,7 +190,7 @@ post("/api/settings",{brightness:$("br").value,auto_night:$("an").checked?1:0,th
 $("bs").onclick=function(){post("/api/sync").then(function(){toast("กำลังซิงค์เวลา...")}).catch(function(){toast("เชื่อมต่อไม่ได้")})};
 $("bw").onclick=function(){
 if(!confirm("เปิดโหมดตั้งค่า WiFi ใช่หรือไม่"))return;
-post("/api/portal").then(function(j){toast("เชื่อมต่อ WiFi ชื่อ "+(j.ap||"ThaiClock-xxxx")+" แล้วเปิด 192.168.4.1")}).catch(function(){toast("เชื่อมต่อไม่ได้")})};
+post("/api/portal").then(function(j){toast("เชื่อมต่อ WiFi ชื่อ "+(j.ap||"LongDeck-xxxx")+" แล้วเปิด 192.168.4.1")}).catch(function(){toast("เชื่อมต่อไม่ได้")})};
 $("br2").onclick=function(){
 if(!confirm("รีสตาร์ทนาฬิกาใช่หรือไม่"))return;
 post("/api/reboot").then(function(){toast("กำลังรีสตาร์ท...")}).catch(function(){toast("กำลังรีสตาร์ท...")})};
