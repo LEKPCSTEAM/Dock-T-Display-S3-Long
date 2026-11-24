@@ -133,7 +133,7 @@ static void hint_create(lv_obj_t *tile)
 
 static void key_create(lv_obj_t *tile, const DeckWidget *w)
 {
-    if (ui_live_create(tile, w)) {
+    if (ui_live_create(tile, w) || ui_claude_create(tile, w)) {
         return;
     }
     lv_coord_t x  = w->col * CELL_W + CELL_PAD;
@@ -176,6 +176,7 @@ static void deck_rebuild()
 
     ui_set_deck_pages(n);
     ui_live_reset();
+    ui_claude_reset();
     for (uint8_t i = 0; i < built_pages && i < DECK_MAX_PAGES; i++) {
         lv_obj_t *tile = ui_deck_tile(i);
         if (tile) {
@@ -276,6 +277,7 @@ void page_deck_update(const UiTick *t)
     }
 
     ui_live_update(t, ready);
+    ui_claude_update(t, ready);
 
     int8_t idx = (int8_t)visible_deck_index(have_layout);
     if (idx != sent_page) {

@@ -81,6 +81,12 @@ void ui_live_reset();
 bool ui_live_create(lv_obj_t *tile, const DeckWidget *w);
 void ui_live_update(const UiTick *t, bool ready);
 
+// Board Claude sessions and usage widgets (ui_deck_claude.cpp).
+void ui_claude_reset();
+bool ui_claude_create(lv_obj_t *tile, const DeckWidget *w);
+void ui_claude_update(const UiTick *t, bool ready);
+void ui_claude_overlay_update(const UiTick *t);  // ui_claude_overlay.cpp
+
 // Full-screen overlays on lv_layer_top(), driven from the ui.cpp tick.
 void ui_pair_update(const UiTick *t);
 void ui_portal_update(const UiTick *t);
