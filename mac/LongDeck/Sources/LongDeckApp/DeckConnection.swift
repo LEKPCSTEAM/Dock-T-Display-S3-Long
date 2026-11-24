@@ -207,6 +207,7 @@ final class DeckConnection {
                 return run(command)
             }
             guard frame.type == "press", let id = obj["id"] as? String, let kind = obj["kind"] as? String else { return }
+            guard !LiveLink.isLiveWidget(id: id, config: config) else { return }
             do {
                 try runner.handlePress(id: id, kind: kind, config: config)
             } catch {

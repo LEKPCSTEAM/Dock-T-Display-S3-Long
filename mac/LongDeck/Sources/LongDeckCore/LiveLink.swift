@@ -57,6 +57,10 @@ public struct LiveLink: Sendable {
         return OutFrame(type: "volume", body: body)
     }
 
+    public static func isLiveWidget(id: String, config: DeckConfig) -> Bool {
+        config.pages.contains { $0.live.contains { $0.id == id } }
+    }
+
     public static func command(type: String, body: String, config: DeckConfig) -> LiveCommand? {
         guard type == "slider" || type == "press",
               let object = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],

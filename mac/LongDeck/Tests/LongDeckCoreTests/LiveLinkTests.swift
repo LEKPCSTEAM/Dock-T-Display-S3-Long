@@ -67,4 +67,10 @@ private let p2 = #"{"id":"vol","kind":"tap"}"#
         #expect(LiveLink.command(type: "press", body: #"{"id":"vol","kind":"long"}"#, config: config) == nil)
         #expect(LiveLink.command(type: "press", body: #"{"id":"k1","kind":"tap"}"#, config: config) == nil)
     }
+
+    @Test func liveWidgetIdsNeverFallThroughToKeys() {
+        let config = liveConfig()
+        for id in ["vol", "cpu"] { #expect(LiveLink.isLiveWidget(id: id, config: config)) }
+        for id in ["k1", "nope"] { #expect(!LiveLink.isLiveWidget(id: id, config: config)) }
+    }
 }
