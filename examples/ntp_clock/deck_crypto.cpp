@@ -19,6 +19,11 @@ void deck_sha256(const uint8_t *msg, size_t len, uint8_t out[32]) {
 
 void deck_hmac_sha256(const uint8_t *key, size_t key_len, const uint8_t *msg, size_t len,
                       uint8_t out[32]) {
+  deck_hmac_sha256_2(key, key_len, msg, len, nullptr, 0, out);
+}
+
+void deck_hmac_sha256_2(const uint8_t *key, size_t key_len, const uint8_t *a, size_t a_len,
+                        const uint8_t *b, size_t b_len, uint8_t out[32]) {
   uint8_t k[64] = {0};
   if (key_len > 64) {
     deck_sha256(key, key_len, k);
@@ -31,7 +36,8 @@ void deck_hmac_sha256(const uint8_t *key, size_t key_len, const uint8_t *msg, si
   for (int i = 0; i < 64; i++) pad[i] = k[i] ^ 0x36;
   sha256_init(&ctx);
   sha256_update(&ctx, pad, 64);
-  sha256_update(&ctx, msg, len);
+  if (a_len > 0) sha256_update(&ctx, a, a_len);
+  if (b_len > 0) sha256_update(&ctx, b, b_len);
   sha256_final(&ctx, inner);
   for (int i = 0; i < 64; i++) pad[i] = k[i] ^ 0x5c;
   sha256_init(&ctx);

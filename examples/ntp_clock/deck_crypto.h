@@ -5,6 +5,8 @@
 void deck_sha256(const uint8_t *msg, size_t len, uint8_t out[32]);
 void deck_hmac_sha256(const uint8_t *key, size_t key_len, const uint8_t *msg, size_t len,
                       uint8_t out[32]);
+void deck_hmac_sha256_2(const uint8_t *key, size_t key_len, const uint8_t *a, size_t a_len,
+                        const uint8_t *b, size_t b_len, uint8_t out[32]);
 void deck_x25519_public(uint8_t pub[32], const uint8_t priv[32]);
 void deck_x25519_shared(uint8_t shared[32], const uint8_t priv[32], const uint8_t peer_pub[32]);
 void deck_derive_key(uint8_t key[32], const uint8_t shared[32], const uint8_t board_pub[32],

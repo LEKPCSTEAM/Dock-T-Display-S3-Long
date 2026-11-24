@@ -91,8 +91,30 @@ void test_ct_equal() {
   TEST_ASSERT_FALSE(deck_ct_equal(a, c, 4));
 }
 
+void test_hmac_2_matches_concat() {
+  uint8_t key[32], msg[300], a[32], b[32];
+  seq(key, 32, 1);
+  seq(msg, sizeof msg, 7);
+  deck_hmac_sha256(key, 32, msg, sizeof msg, a);
+  deck_hmac_sha256_2(key, 32, msg, 4, msg + 4, sizeof msg - 4, b);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(a, b, 32);
+  deck_hmac_sha256_2(key, 32, msg, sizeof msg, nullptr, 0, b);
+  TEST_ASSERT_EQUAL_UINT8_ARRAY(a, b, 32);
+}
+
+void test_hmac_2_face_chunk_vector() {
+  uint8_t key[32], mac[32];
+  seq(key, 32, 1);
+  const uint8_t s[4] = {1, 0, 0, 0};
+  const uint8_t pl[13] = {1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0xf8, 0, 0xff};
+  deck_hmac_sha256_2(key, 32, s, 4, pl, 13, mac);
+  expect_hex("86bd1fd5de4300ce41a05a415509242569b7c27f9035f759cfc6545f4d63c5e3", mac, 32);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_hmac_2_matches_concat);
+  RUN_TEST(test_hmac_2_face_chunk_vector);
   RUN_TEST(test_hmac_rfc4231_case1);
   RUN_TEST(test_hmac_rfc4231_case2);
   RUN_TEST(test_x25519_rfc7748);

@@ -171,6 +171,8 @@ bool DeckSession::handle_pair_confirm(const char *proof_hex, std::vector<std::st
 
 bool DeckSession::on_text(const char *data, size_t len, std::vector<std::string> *replies) {
   if (state_ == Closed) return false;
+  size_t cap = state_ == Ready ? DECK_TEXT_FRAME_MAX : DECK_HANDSHAKE_FRAME_MAX;
+  if (len > cap) return fail(replies, "proto");
   JsonDocument doc;
   if (deserializeJson(doc, data, len)) return fail(replies, "proto");
   const char *t = doc["t"].is<const char *>() ? doc["t"].as<const char *>() : nullptr;
@@ -210,11 +212,9 @@ bool DeckSession::on_binary(const uint8_t *data, size_t len) {
 
   uint32_t s = (uint32_t)data[1] | ((uint32_t)data[2] << 8) | ((uint32_t)data[3] << 16) |
                ((uint32_t)data[4] << 24);
-  std::vector<uint8_t> in(4 + payload_len);
-  put_u32le(in.data(), s);
-  memcpy(in.data() + 4, payload, payload_len);
-  uint8_t want[32];
-  deck_hmac_sha256(ks_, 32, in.data(), in.size(), want);
+  uint8_t s_le[4], want[32];
+  put_u32le(s_le, s);
+  deck_hmac_sha256_2(ks_, 32, s_le, 4, payload, payload_len, want);
   if (!deck_ct_equal(want, data + 5, 32)) return false;
   if (s <= last_rx_) return false;
   last_rx_ = s;

@@ -9,6 +9,8 @@
 #define DECK_PAIR_TIMEOUT_MS   60000
 #define DECK_PAIR_COOLDOWN_MS  10000
 #define DECK_FACE_CHUNK_MAX    (12 * 1024)
+#define DECK_TEXT_FRAME_MAX    (20 * 1024)
+#define DECK_HANDSHAKE_FRAME_MAX 512
 
 struct DeckEnv {
   void (*random)(uint8_t *buf, size_t len);

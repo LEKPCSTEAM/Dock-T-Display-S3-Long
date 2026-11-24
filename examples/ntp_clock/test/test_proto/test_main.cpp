@@ -480,8 +480,141 @@ void test_handshake_after_ready_closes() {
   TEST_ASSERT_FALSE(send(s, auth_frame(app_proof()), &r));
 }
 
+static std::string pair_start_frame() {
+  uint8_t priv[32], pub[32];
+  seq(priv, 32, 0x80);
+  deck_x25519_public(pub, priv);
+  return "{\"t\":\"pair_start\",\"pub\":\"" + hex(pub, 32) + "\"}";
+}
+
+static std::string error_code(const std::string &reply) {
+  JsonDocument d = parse(reply);
+  TEST_ASSERT_EQUAL_STRING("error", d["t"].as<const char *>());
+  return d["code"].as<const char *>();
+}
+
+void test_pair_cooldown_only_path() {
+  {
+    DeckSession s1(&ENV);
+    do_hello(s1);
+    std::vector<std::string> r;
+    Pairing p;
+    pair_start(s1, &p, &r);
+  }
+  g_now += 5000;
+  g_random_calls = 0;
+  DeckSession s2(&ENV);
+  do_hello(s2);
+  std::vector<std::string> r2;
+  TEST_ASSERT_TRUE(send(s2, pair_start_frame(), &r2));
+  TEST_ASSERT_EQUAL_STRING("busy", error_code(r2[0]).c_str());
+  g_now += DECK_PAIR_COOLDOWN_MS - 5000;
+  r2.clear();
+  TEST_ASSERT_TRUE(send(s2, pair_start_frame(), &r2));
+  TEST_ASSERT_EQUAL_STRING("pair_pub", parse(r2[0])["t"].as<const char *>());
+}
+
+void test_late_confirm_after_timeout_is_proto() {
+  DeckSession s(&ENV);
+  do_hello(s);
+  std::vector<std::string> r;
+  Pairing p;
+  pair_start(s, &p, &r);
+  g_now += DECK_PAIR_TIMEOUT_MS;
+  s.tick();
+  r.clear();
+  TEST_ASSERT_FALSE(send(s, confirm_frame(p.kp), &r));
+  TEST_ASSERT_EQUAL_STRING("proto", error_code(r[0]).c_str());
+  TEST_ASSERT_EQUAL(0, g_store_calls);
+}
+
+void test_confirm_without_pairing_is_proto() {
+  DeckSession s(&ENV);
+  do_hello(s);
+  std::vector<std::string> r;
+  TEST_ASSERT_FALSE(send(s, confirm_frame(K), &r));
+  TEST_ASSERT_EQUAL_STRING("proto", error_code(r[0]).c_str());
+}
+
+void test_destructor_releases_pairing() {
+  {
+    DeckSession s1(&ENV);
+    do_hello(s1);
+    std::vector<std::string> r;
+    Pairing p;
+    pair_start(s1, &p, &r);
+    TEST_ASSERT_TRUE(g_code_show);
+  }
+  TEST_ASSERT_FALSE(g_code_show);
+  g_now += DECK_PAIR_COOLDOWN_MS;
+  g_random_calls = 0;
+  DeckSession s2(&ENV);
+  do_hello(s2);
+  std::vector<std::string> r2;
+  TEST_ASSERT_TRUE(send(s2, pair_start_frame(), &r2));
+  TEST_ASSERT_EQUAL_STRING("pair_pub", parse(r2[0])["t"].as<const char *>());
+}
+
+void test_binary_replay_rejected() {
+  DeckSession s(&ENV);
+  make_ready(s);
+  s.on_face = on_face;
+  std::vector<uint8_t> f = app_bin(1, face_payload(1, 1, 1, 0, 1, 3), KS);
+  TEST_ASSERT_TRUE(s.on_binary(f.data(), f.size()));
+  TEST_ASSERT_FALSE(s.on_binary(f.data(), f.size()));
+  TEST_ASSERT_EQUAL(1, g_face_calls);
+}
+
+void test_zero_sequence_rejected() {
+  DeckSession s(&ENV);
+  make_ready(s);
+  std::vector<std::string> r;
+  TEST_ASSERT_FALSE(send(s, app_text("layout", 0, "{}", KS), &r));
+  DeckSession s2(&ENV);
+  g_random_calls = 0;
+  make_ready(s2);
+  std::vector<uint8_t> f = app_bin(0, face_payload(1, 1, 1, 0, 1, 3), KS);
+  TEST_ASSERT_FALSE(s2.on_binary(f.data(), f.size()));
+}
+
+void test_oversized_preauth_text_rejected() {
+  DeckSession s(&ENV);
+  std::string big = "{\"t\":\"hello\",\"v\":1,\"nonce\":\"" + std::string(600, 'a') + "\"}";
+  std::vector<std::string> r;
+  TEST_ASSERT_FALSE(send(s, big, &r));
+  TEST_ASSERT_EQUAL_STRING("proto", error_code(r[0]).c_str());
+}
+
+void test_text_frame_cap_when_ready() {
+  DeckSession s(&ENV);
+  make_ready(s);
+  std::string big(DECK_TEXT_FRAME_MAX + 1, ' ');
+  std::vector<std::string> r;
+  TEST_ASSERT_FALSE(send(s, big, &r));
+  TEST_ASSERT_EQUAL_STRING("proto", error_code(r[0]).c_str());
+}
+
+void test_large_layout_under_cap_ok() {
+  DeckSession s(&ENV);
+  make_ready(s);
+  s.on_message = on_msg;
+  std::string body = "{\"pad\":\"" + std::string(15000, 'x') + "\"}";
+  std::vector<std::string> r;
+  TEST_ASSERT_TRUE(send(s, app_text("layout", 1, body, KS), &r));
+  TEST_ASSERT_EQUAL(1, g_msg_calls);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_pair_cooldown_only_path);
+  RUN_TEST(test_late_confirm_after_timeout_is_proto);
+  RUN_TEST(test_confirm_without_pairing_is_proto);
+  RUN_TEST(test_destructor_releases_pairing);
+  RUN_TEST(test_binary_replay_rejected);
+  RUN_TEST(test_zero_sequence_rejected);
+  RUN_TEST(test_oversized_preauth_text_rejected);
+  RUN_TEST(test_text_frame_cap_when_ready);
+  RUN_TEST(test_large_layout_under_cap_ok);
   RUN_TEST(test_hello_gets_challenge);
   RUN_TEST(test_auth_ok_vector);
   RUN_TEST(test_auth_bad_proof_closes);
