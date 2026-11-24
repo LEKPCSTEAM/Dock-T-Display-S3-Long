@@ -17,6 +17,11 @@ final class ClaudeController: ObservableObject {
     private var timer: Timer?
     private var lastPublished: String?
     private var inFlight = Set<String>()
+    private var actionRequests = Set<String>()
+    private var busyPanes = Set<String>()
+    private var listenerToken: String?
+    private var retryTask: Task<Void, Never>?
+    private var wakeObserver: NSObjectProtocol?
     private let clockOrigin = ContinuousClock.now
     private let responder = ClaudeResponder(
         runner: ProcessTmuxRunner(), frontTTY: { OSAScript.frontTTY() },
@@ -34,6 +39,13 @@ final class ClaudeController: ObservableObject {
             startListener(token: state.token)
         }
         publish()
+        if wakeObserver == nil {
+            wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in self?.restartListener() }
+            }
+        }
         guard timer == nil else { return }
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick() }
@@ -59,6 +71,11 @@ final class ClaudeController: ObservableObject {
             installed = true
             startListener(token: state.token)
             publish()
+            let done = NSAlert()
+            done.messageText = "Claude Code integration installed"
+            done.informativeText = "Backup saved at \(state.backupPath ?? "(none, settings.json did not exist)"). "
+                + "Restart running Claude Code sessions."
+            done.runModal()
         } catch {
             showError(error)
         }
@@ -72,15 +89,18 @@ final class ClaudeController: ObservableObject {
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
-        listener?.stop()
-        listener = nil
-        listenerError = nil
         do {
             try ClaudeInstaller.uninstall(Self.livePaths(), now: Date())
-            installed = false
         } catch {
             showError(error)
+            return
         }
+        listener?.stop()
+        listener = nil
+        listenerToken = nil
+        retryTask?.cancel()
+        listenerError = nil
+        installed = false
         store = ClaudeStore(runTag: String(UUID().uuidString.prefix(4)).lowercased())
         inFlight = []
         publish()
@@ -88,10 +108,22 @@ final class ClaudeController: ObservableObject {
 
     func handleAction(_ body: String, reply: @escaping (String) -> Void) {
         guard let req = ClaudeActionRequest.parse(body) else {
-            NSLog("LongDeck: dropped unparsable claude_action")
+            let object = (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: Any]
+            if let request = object?["request"] as? String, !request.isEmpty {
+                reply(ClaudeAck(request: request, ok: false, reason: "proto").body)
+            } else {
+                NSLog("LongDeck: dropped unparsable claude_action")
+            }
             return
         }
         let session = store.sessions[req.session]
+        let pane = session?.pane
+        if actionRequests.contains(req.request) && !req.request.isEmpty || pane.map(busyPanes.contains) == true {
+            reply(ClaudeAck(request: req.request, ok: false, reason: "busy").body)
+            return
+        }
+        actionRequests.insert(req.request)
+        if let pane { busyPanes.insert(pane) }
         let target = session.map {
             ClaudeTarget(pane: $0.pane, pendingRequest: $0.pending?.request, toolName: $0.pending?.toolName,
                          toolInputJSON: $0.pending?.toolInputJSON, cwd: $0.cwd)
@@ -100,6 +132,8 @@ final class ClaudeController: ObservableObject {
         Task { @MainActor [weak self] in
             let ack = await Task.detached { responder.handle(req, target: target) }.value
             guard let self else { return }
+            actionRequests.remove(req.request)
+            if let pane { busyPanes.remove(pane) }
             if ack.ok {
                 switch req.action {
                 case .approve, .always:
@@ -117,20 +151,40 @@ final class ClaudeController: ObservableObject {
 
     private func startListener(token: String) {
         listener?.stop()
-        listenerError = nil
+        listenerToken = token
         let l = ClaudeListener(port: UInt16(ClaudeInstaller.port), token: token) { [weak self] inbound in
             self?.receive(inbound)
         }
-        l.onFailure = { [weak self] _ in self?.listenerFailed() }
+        l.onFailure = { [weak self, weak l] _ in self?.listenerFailed(l) }
         listener = l
-        l.start { [weak self] result in
-            if case .failure = result { self?.listenerFailed() }
+        l.start { [weak self, weak l] result in
+            guard let self, self.listener === l else { return }
+            switch result {
+            case .success:
+                listenerError = nil
+                refreshStatus()
+            case .failure:
+                listenerFailed(l)
+            }
         }
     }
 
-    private func listenerFailed() {
+    private func restartListener() {
+        guard let token = listenerToken else { return }
+        retryTask?.cancel()
+        startListener(token: token)
+    }
+
+    private func listenerFailed(_ failed: ClaudeListener?) {
+        guard failed === listener else { return }
         listenerError = "Claude: listener failed (port \(ClaudeInstaller.port) busy?)"
         refreshStatus()
+        retryTask?.cancel()
+        retryTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard !Task.isCancelled else { return }
+            self?.restartListener()
+        }
     }
 
     private func receive(_ inbound: ClaudeInbound) {
@@ -148,7 +202,7 @@ final class ClaudeController: ObservableObject {
     private func tick() {
         store.expire(now: monotonic, wall: Date())
         for (session, pending) in store.pendingPrompts() {
-            guard let pane = session.pane, inFlight.insert(pending.request).inserted else { continue }
+            guard let pane = session.pane, !busyPanes.contains(pane), inFlight.insert(pending.request).inserted else { continue }
             let (sessionId, request) = (session.id, pending.request)
             let responder = responder
             Task { @MainActor [weak self] in
@@ -225,7 +279,7 @@ private enum OSAScript {
     }
 
     static func activate(_ tty: String?) {
-        if let tty {
+        if let tty, tty.range(of: #"^/dev/ttys[0-9]+$"#, options: .regularExpression) != nil {
             let script = """
             tell application "iTerm2"
                 repeat with w in windows
