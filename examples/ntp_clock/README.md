@@ -37,6 +37,21 @@ pio device monitor -b 115200
 - หน้าปฏิทิน: นาฬิกาเข็ม, วันที่ของปี/สัปดาห์, % ของปีที่ผ่านไป, นับถอยหลังวันสำคัญถัดไป
 - 22:00–06:00 หรี่จอและเปลี่ยนเป็นโทนแดงอัตโนมัติ (ปิดได้)
 
+## แก้หน้าตาด้วย EEZ Studio
+
+Layout และ style ของทุกหน้าอยู่ใน `eez/thaiclock.eez-project` (LVGL 8.4.0, 640x180, ไม่ใช้ Flow) ส่วน logic ทั้งหมดอยู่ใน C++
+
+1. เปิด `eez/thaiclock.eez-project` ใน EEZ Studio แล้วแก้ตำแหน่ง/สี/font ได้เลย
+2. กด **Build** — โค้ดจะถูกสร้างใน `eez/gen/` (ห้ามแก้ไฟล์ใน `gen/` ด้วยมือ)
+3. `pio run -e ntp_clock -t upload`
+
+ข้อควรรู้:
+
+- ตอน boot `ui.cpp` เรียก `create_screen_<x>_page()` ทีละหน้าแล้วย้าย widget เข้า tile ของ tileview — **ไม่ได้ใช้** `create_screens()` / `gen/ui.c` (ตั้ง theme สว่าง) และไม่ link `gen/ui_font_*.c`
+- font ตอนรันจริงมาจาก `fonts/` + `thai_fonts.c` (ซ้อนวรรณยุกต์บนสระบนได้) เลยสูงกว่า font ใน preview — ข้อความไทยบนจอจริงจะต่ำกว่าใน EEZ ราว 5–7 px
+- โค้ดอ้าง widget ตามชื่อ (`objects.label_clock_sec` ฯลฯ) — เปลี่ยนชื่อ widget ใน EEZ แล้วต้องแก้ C++ ตาม
+- ส่วนที่ยังสร้างในโค้ด: เข็มนาฬิกา (`lv_meter`), toast, flash, จุดบอกหน้า
+
 ## Hardware notes
 
 - Touch ตรวจรุ่นเองตอน boot: เจอ I2C `0x3B` = touch ในตัว AXS15231B (บอร์ดรุ่นแรก), ไม่เจอ = CST3530 (ใช้ `hyn_driver`)

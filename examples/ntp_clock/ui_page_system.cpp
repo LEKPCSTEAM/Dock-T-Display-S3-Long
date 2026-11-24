@@ -287,8 +287,9 @@ void page_system_create(lv_obj_t *)
     bind_row(ROW_CITY, objects.label_system_city_icon, objects.label_system_city_text);
 
     if (!s_has_pmu) {
-        const lv_coord_t city_y = lv_obj_get_y(s_icons[ROW_BATTERY]);
-        const lv_coord_t battery_y = lv_obj_get_y(s_icons[ROW_CITY]);
+        // Style y: coords are not laid out yet right after mounting.
+        const lv_coord_t city_y = lv_obj_get_y_aligned(s_icons[ROW_BATTERY]);
+        const lv_coord_t battery_y = lv_obj_get_y_aligned(s_icons[ROW_CITY]);
         lv_obj_set_y(s_icons[ROW_CITY], city_y);
         lv_obj_set_y(s_text[ROW_CITY].obj, city_y);
         lv_obj_set_y(s_icons[ROW_BATTERY], battery_y);
