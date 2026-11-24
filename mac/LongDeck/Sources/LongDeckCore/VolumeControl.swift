@@ -96,7 +96,7 @@ public extension VolumeControl {
     }
 
     static func percent(_ scalar: Float32) -> Int? {
-        scalar.isFinite ? Int((scalar * 100).rounded()) : nil
+        scalar.isFinite ? Int((max(0, min(1, scalar)) * 100).rounded()) : nil
     }
 
     public func setLevel(_ level: Int) throws {

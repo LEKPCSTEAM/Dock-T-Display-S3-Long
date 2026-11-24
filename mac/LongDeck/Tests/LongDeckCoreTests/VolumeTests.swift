@@ -62,6 +62,9 @@ struct VolumeTests {
 
     @Test func percentRejectsNonFinite() {
         #expect(CoreAudioVolume.percent(0.444) == 44)
+        #expect(CoreAudioVolume.percent(1e37) == 100)
+        #expect(CoreAudioVolume.percent(-1e37) == 0)
+        #expect(CoreAudioVolume.percent(1.5) == 100)
         #expect(CoreAudioVolume.percent(.nan) == nil)
         #expect(CoreAudioVolume.percent(.infinity) == nil)
         #expect(CoreAudioVolume.percent(-.infinity) == nil)
