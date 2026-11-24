@@ -35,31 +35,71 @@ final class AppModel: ObservableObject {
         .appendingPathComponent("LongDeck/config.json")
     private static let lastBoardKey = "lastBoardId"
 
-    private var config: DeckConfig = SampleConfig.dev
+    private var config: DeckConfig?
     private var connection: DeckConnection?
     private var policy = ReconnectPolicy()
     private var retryTask: Task<Void, Never>?
-    private var watcher: DispatchSourceFileSystemObject?
+    private var dirWatcher: DispatchSourceFileSystemObject?
+    private var fileWatcher: DispatchSourceFileSystemObject?
     private var debounce: Task<Void, Never>?
+    private var trustTimer: Timer?
 
-    var isTrusted: Bool { system.isTrusted }
+    @Published private(set) var isTrusted = true
 
     func start() {
         reloadConfig()
         watchConfig()
+        observeSleep()
+        refreshTrust()
+        trustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshTrust() }
+        }
         discovery.onChange = { [weak self] in self?.connectIfPossible() }
         discovery.start()
     }
 
+    private func refreshTrust() {
+        let trusted = system.isTrusted
+        if trusted != isTrusted { isTrusted = trusted }
+    }
+
     func reloadConfig() {
-        do {
-            let loaded = try DeckConfig.load(from: Self.configURL)
-            config = loaded
-            configError = nil
-            connection?.push(config: loaded)
-        } catch {
-            configError = "\(error)"
+        switch ConfigLoadOutcome.read(from: Self.configURL) {
+        case .missing:
+            try? SampleConfig.dev.save(to: Self.configURL)
+            apply(SampleConfig.dev)
+        case .loaded(let loaded):
+            apply(loaded)
+        case .invalid(let message):
+            configError = message
         }
+    }
+
+    private func apply(_ loaded: DeckConfig) {
+        config = loaded
+        configError = nil
+        connection?.push(config: loaded)
+    }
+
+    private func observeSleep() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.dropConnection() }
+        }
+        center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                self?.policy.reset()
+                self?.scheduleRetry()
+            }
+        }
+    }
+
+    private func dropConnection() {
+        retryTask?.cancel()
+        connection?.close()
+        connection = nil
+        awaitingCode = false
+        status = .offline
     }
 
     func openConfigFolder() {
@@ -72,6 +112,8 @@ final class AppModel: ObservableObject {
     }
 
     func openAccessibilitySettings() {
+        let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
+        isTrusted = AXIsProcessTrustedWithOptions(options)
         let url = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
         if let u = URL(string: url) { NSWorkspace.shared.open(u) }
     }
@@ -111,7 +153,7 @@ final class AppModel: ObservableObject {
         status = pairing ? .pairing : .connecting
         let conn = DeckConnection(
             board: board, pairing: pairing, runner: ActionRunner(system: system),
-            configProvider: { [weak self] in self?.config ?? SampleConfig.dev },
+            configProvider: { [weak self] in self?.config },
             onEvent: { [weak self] event in self?.handle(event, from: board) }
         )
         connection = conn
@@ -156,20 +198,32 @@ final class AppModel: ObservableObject {
     private func watchConfig() {
         let dir = Self.configURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let fd = open(dir.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        let source = DispatchSource.makeFileSystemObjectSource(
-            fileDescriptor: fd, eventMask: [.write, .rename, .delete], queue: .main)
-        source.setEventHandler { [weak self] in
-            self?.debounce?.cancel()
-            self?.debounce = Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(300))
-                guard !Task.isCancelled else { return }
-                self?.reloadConfig()
-            }
-        }
+        dirWatcher = makeWatcher(path: dir.path, mask: [.write, .rename, .delete])
+        armFileWatcher()
+    }
+
+    private func armFileWatcher() {
+        fileWatcher?.cancel()
+        fileWatcher = makeWatcher(path: Self.configURL.path, mask: [.write, .extend, .delete, .rename])
+    }
+
+    private func makeWatcher(path: String, mask: DispatchSource.FileSystemEvent) -> DispatchSourceFileSystemObject? {
+        let fd = open(path, O_EVTONLY)
+        guard fd >= 0 else { return nil }
+        let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: mask, queue: .main)
+        source.setEventHandler { [weak self] in self?.scheduleReload() }
         source.setCancelHandler { close(fd) }
         source.resume()
-        watcher = source
+        return source
+    }
+
+    private func scheduleReload() {
+        debounce?.cancel()
+        debounce = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self?.reloadConfig()
+            self?.armFileWatcher()
+        }
     }
 }

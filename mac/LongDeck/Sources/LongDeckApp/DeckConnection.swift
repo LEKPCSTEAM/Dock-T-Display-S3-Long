@@ -16,7 +16,7 @@ final class DeckConnection {
     private let board: DiscoveredBoard
     private let pairing: Bool
     private let runner: ActionRunner
-    private let configProvider: () -> DeckConfig
+    private let configProvider: () -> DeckConfig?
     private let onEvent: (ConnectionEvent) -> Void
 
     private var handshake: DeckHandshake
@@ -26,10 +26,14 @@ final class DeckConnection {
     private var sawChallenge = false
     private var boardHash: String?
     private var closed = false
+    private var pingTask: Task<Void, Never>?
+    private var lastPong = Date()
+    private static let pingInterval = 5.0
+    private static let pongTimeout = 10.0
 
     init(
         board: DiscoveredBoard, pairing: Bool, runner: ActionRunner,
-        configProvider: @escaping () -> DeckConfig,
+        configProvider: @escaping () -> DeckConfig?,
         onEvent: @escaping (ConnectionEvent) -> Void
     ) {
         self.board = board
@@ -59,6 +63,7 @@ final class DeckConnection {
     func close() {
         guard !closed else { return }
         closed = true
+        pingTask?.cancel()
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
     }
@@ -79,8 +84,28 @@ final class DeckConnection {
         let task = URLSession.shared.webSocketTask(with: url)
         self.task = task
         task.resume()
+        startPinging(task)
         handle(handshake.start())
         receiveLoop(task)
+    }
+
+    private func startPinging(_ task: URLSessionWebSocketTask) {
+        lastPong = Date()
+        pingTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.pingInterval))
+                guard let self, !self.closed, self.task === task else { return }
+                if Date().timeIntervalSince(self.lastPong) > Self.pongTimeout {
+                    return self.finish("ping timeout")
+                }
+                task.sendPing { error in
+                    Task { @MainActor in
+                        guard !self.closed, self.task === task else { return }
+                        if error != nil { self.finish("ping failed") } else { self.lastPong = Date() }
+                    }
+                }
+            }
+        }
     }
 
     private func receiveLoop(_ task: URLSessionWebSocketTask) {
@@ -144,11 +169,12 @@ final class DeckConnection {
         switch frame.type {
         case "hello_state":
             boardHash = obj["hash"] as? String ?? ""
-            push(config: configProvider())
+            if let config = configProvider() { push(config: config) }
         case "press":
             guard let id = obj["id"] as? String, let kind = obj["kind"] as? String else { return }
+            guard let config = configProvider() else { return }
             do {
-                try runner.handlePress(id: id, kind: kind, config: configProvider())
+                try runner.handlePress(id: id, kind: kind, config: config)
             } catch {
                 onEvent(.actionFailed(Self.describe(error)))
             }
@@ -161,7 +187,14 @@ final class DeckConnection {
 
     private func send(_ built: BuiltLayout) {
         guard var sealer, let task else { return }
-        task.send(.string(sealer.seal(type: "layout", body: built.json))) { _ in }
+        let layout = sealer.seal(type: "layout", body: built.json)
+        let bytes = layout.utf8.count
+        guard LayoutPushPolicy.fits(frameBytes: bytes) else {
+            let max = LayoutPushPolicy.maxWebSocketFrame
+            onEvent(.actionFailed("Layout too large for the board: \(bytes) bytes, max \(max)"))
+            return
+        }
+        task.send(.string(layout)) { _ in }
         for id in built.faces.keys.sorted() {
             let face = built.faces[id]!
             for chunk in sealer.faceChunks(id: id, w: face.w, h: face.h, pixels: face.pixels) {
