@@ -2,6 +2,14 @@ import AppKit
 import LongDeckCore
 import SwiftUI
 
+enum SaveCommit {
+    static func run(resign: () -> Void, schedule: (@escaping () -> Void) -> Void,
+                    save: @escaping () -> Void) {
+        resign()
+        schedule(save)
+    }
+}
+
 enum UndoRouting {
     static func storeHandlesUndo(firstResponder: NSResponder?) -> Bool {
         !(firstResponder is NSText)
@@ -71,8 +79,9 @@ public struct EditorView: View {
             Spacer()
             Text(store.status).foregroundColor(.secondary).lineLimit(1)
             Button("Save") {
-                NSApp.keyWindow?.makeFirstResponder(nil)
-                store.save()
+                SaveCommit.run(resign: { NSApp.keyWindow?.makeFirstResponder(nil) },
+                               schedule: { DispatchQueue.main.async(execute: $0) },
+                               save: { store.save() })
             }
                 .keyboardShortcut("s", modifiers: .command)
                 .buttonStyle(.borderedProminent)

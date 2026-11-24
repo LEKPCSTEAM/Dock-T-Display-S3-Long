@@ -12,6 +12,15 @@ struct IssueListView: View {
         self.store = store
     }
 
+    static func identified(_ issues: [EditorIssue]) -> [(id: String, issue: EditorIssue)] {
+        var seen: [String: Int] = [:]
+        return issues.map { issue in
+            let n = seen[issue.stableId, default: 0]
+            seen[issue.stableId] = n + 1
+            return (id: "\(issue.stableId)#\(n)", issue: issue)
+        }
+    }
+
     private var sorted: [EditorIssue] {
         store.issues.filter { $0.severity == .error } + store.issues.filter { $0.severity == .warning }
     }
@@ -24,7 +33,8 @@ struct IssueListView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(sorted, id: \.stableId) { issue in
+                        ForEach(Self.identified(sorted), id: \.id) { row in
+                            let issue = row.issue
                             Text(line(issue))
                                 .font(.system(size: 12))
                                 .foregroundColor(issue.severity == .error ? BoardColors.err : BoardColors.warn)

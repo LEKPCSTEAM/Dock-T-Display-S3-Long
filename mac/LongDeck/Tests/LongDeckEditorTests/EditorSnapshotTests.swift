@@ -53,6 +53,23 @@ import Testing
         #expect(Set(ids).count == ids.count)
     }
 
+    @Test func identicalIssuesGetUniqueRowIds() {
+        let issue = EditorIssue(severity: .error, page: 0, widget: "a", message: "same")
+        let rows = IssueListView.identified([issue, issue, issue])
+        #expect(Set(rows.map(\.id)).count == 3)
+    }
+
+    @Test func saveRunsAfterResignOnNextTurn() {
+        var log: [String] = []
+        var pending: (() -> Void)?
+        SaveCommit.run(resign: { log.append("resign") },
+                       schedule: { pending = $0 },
+                       save: { log.append("save") })
+        #expect(log == ["resign"])
+        pending?()
+        #expect(log == ["resign", "save"])
+    }
+
     @Test func issueListReveal() {
         let s = withNewKey()
         s.selectPage(0)
