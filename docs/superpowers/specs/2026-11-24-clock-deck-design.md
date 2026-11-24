@@ -1,10 +1,10 @@
-# ThaiClock Deck — Design
+# LongDeck — Design
 
 Date: 2026-11-24 · Branch: `clock-deck` (from `ntp-clock`)
 
 ## Intent
 
-Turn the ThaiClock desk clock (`examples/ntp_clock`, T-Display-S3-Long, 640x180 touch) into a
+Turn the NTP desk clock firmware (`examples/ntp_clock`, T-Display-S3-Long, 640x180 touch) into a
 Stream-Deck-like control surface for the owner's Mac, without losing the clock. The owner is a
 developer. Daily use is coding plus watching and answering Claude Code sessions. From the board
 they want to: fire hotkeys, open apps, control media and system volume, see how the Mac is doing
@@ -25,7 +25,8 @@ behave exactly as today.
 | Mac stats | CPU, RAM, GPU, disk, network, temperature. Battery is shown only when the Mac has one, so it is hidden on the Mac mini. |
 | Layout | Every custom page is designed freely in the Mac app by placing widgets on a grid. |
 | Config | A GUI program (the Mac app). No hand-edited files required, no web UI on the board. |
-| Firmware home | Inside ThaiClock. The existing pages Clock → Calendar → Focus → System stay as they are. Custom pages are appended after System in the swipe order. |
+| Firmware home | Inside the clock firmware (`examples/ntp_clock`). The existing pages Clock → Calendar → Focus → System stay as they are. Custom pages are appended after System in the swipe order. |
+| Naming | The board and the Mac app are both called **LongDeck**. The old clock name is removed from the firmware too (see "Renaming"). |
 | Claude | Session state, usage limits (5 h / weekly), context and cost, and Approve / Deny / Interrupt / jump-to-session buttons. |
 | Permission prompts | Shown in both places at once. The terminal prompt works as usual. Pressing Approve/Deny on the board types the answer into that session's tmux pane. |
 | Deny on the board | Same as "No" at the terminal. Claude stops the turn and waits for keyboard input. The board then shows "waiting for you". |
@@ -46,7 +47,7 @@ behave exactly as today.
 - Soundboard or audio playback on the board (it has no speaker).
 - Now-playing track info (macOS 15.4+ blocks the MediaRemote API for third-party apps).
 - Per-app volume. More than one paired Mac per board.
-- Editing the four existing ThaiClock pages from the Mac app.
+- Editing the four existing clock pages from the Mac app.
 
 ## Anti-goals (a failure even if it "works")
 
@@ -68,13 +69,13 @@ behave exactly as today.
   custom-page grid is **8 columns x 2 rows** (80x90 px cells, about 10x12 mm). Widgets span whole
   cells.
 - Threads today: LVGL runs in `loop()` on core 1. `net_task` on core 0 owns Wi-Fi, the sync
-  `WebServer` on port 80, mDNS (`thaiclock.local`, `_http._tcp`), NTP and weather. Data crosses
+  `WebServer` on port 80, mDNS (`CLOCK_HOSTNAME`, `_http._tcp`), NTP and weather. Data crosses
   threads through mutex-guarded snapshots (`net_get_status`). New code follows the same pattern.
 - The dev board has no battery. The PMU (SY6970) is already set to 1500 mA / 3.7 V so Wi-Fi bursts
   do not brown it out. Keep that.
 - Partition table today is `huge_app.csv`: 3 MB app plus an 896 KB `spiffs` data partition at
   `0x310000`, unused so far.
-- The existing pages come from EEZ Studio (`eez/thaiclock.eez-project`). Custom pages cannot,
+- The existing pages come from EEZ Studio (`eez/*.eez-project`). Custom pages cannot,
   because their content is only known at runtime.
 - Thai labels need the repo's tone-stacking fonts (`thai_fonts.c`). Those fonts cover Thai, Latin
   and a FontAwesome subset only.
@@ -129,7 +130,8 @@ Windows path, but every native part (CGEvent, IOKit, iTerm2) would be written in
 owner chose **SwiftUI native**: every API needed is first-party, it ships as one `.app` with one
 Accessibility grant, and the editor feels like a Mac app.
 
-**Firmware home: new example vs inside ThaiClock.** The owner chose **inside ThaiClock**. It reuses
+**Firmware home: new example vs inside the clock firmware.** The owner chose **inside the clock
+firmware**. It reuses
 Wi-Fi provisioning, NVS settings, mDNS, the tileview and fonts, and the board stays a clock when the
 Mac is off.
 
@@ -146,7 +148,7 @@ carries a request id, and the app reads the pane with `tmux capture-pane` before
 
 ```
  Claude Code ──http hooks──▶┐
- statusLine wrapper ──POST─▶│  ThaiDeck.app (menu bar, SwiftUI)        ThaiClock board
+ statusLine wrapper ──POST─▶│  LongDeck.app (menu bar, SwiftUI)        LongDeck board
                             │  - config + editor                       - tileview: Clock, Calendar,
  macOS APIs ◀──actions──────│  - actions (CGEvent, NSWorkspace, ...)     Focus, System, Deck 1..N
  tmux / iTerm2 ◀─send-keys──│  - stats sampler (1 Hz)   ◀── WebSocket ─▶ - deck renderer + cache
@@ -159,7 +161,7 @@ the Mac's IP can change freely.
 ### Board ↔ app protocol
 
 - Transport: WebSocket on port 81, served from `net_task` (for example `links2004/WebSockets`). The
-  existing port-80 `WebServer` is untouched. mDNS adds `_thaideck._tcp` port 81 with the TXT
+  existing port-80 `WebServer` is untouched. mDNS adds `_longdeck._tcp` port 81 with the TXT
   record `id=<board MAC>`.
 - Text frames carry JSON. Binary frames carry key-face bitmaps.
 - **Pairing**: the user picks the board in the app and taps "Pair". The board shows a 6-digit PIN on
@@ -213,13 +215,26 @@ the Mac's IP can change freely.
   LVGL thread through mutex-guarded snapshots with version counters, like `net_get_status`.
   Outgoing events go through a small FreeRTOS queue from the LVGL thread to `net_task`.
 
-### Mac app (`ThaiDeck.app`)
+### Renaming (firmware)
 
-Location: `mac/ThaiDeck/` at the repo root (Xcode project). It is kept out of
+All names visible to the user become LongDeck:
+
+- `CLOCK_HOSTNAME` changes from `thaiclock` to `longdeck`, so the board answers at `longdeck.local`.
+- `CLOCK_AP_PREFIX` changes from `ThaiClock-` to `LongDeck-`.
+- The AP name fallback in `web_pages.h`, the README, and the EEZ project file (renamed to
+  `eez/longdeck.eez-project`) all change too, with the EEZ text changed through the EEZ CLI and the
+  project rebuilt.
+- The NVS namespace changes from `thaiclock` to `longdeck`, with a one-time migration at boot so
+  saved Wi-Fi and settings survive. *(Builder call.)*
+- Nothing in `lib/` or the vendor examples is touched.
+
+### Mac app (`LongDeck.app`)
+
+Location: `mac/LongDeck/` at the repo root (Xcode project). It is kept out of
 `examples/ntp_clock/` because `build_src_filter = +<*>` would compile any C shim found there. It is a
 menu-bar app (`MenuBarExtra`) with an editor window.
 
-- **Connection**: Bonjour browse for `_thaideck._tcp`, `URLSessionWebSocketTask`, auto-reconnect.
+- **Connection**: Bonjour browse for `_longdeck._tcp`, `URLSessionWebSocketTask`, auto-reconnect.
   The menu bar shows the state (paired / connecting / offline).
 - **Editor**:
   - A pages list. Each page has a canvas drawn at the device's aspect ratio with the 8x2 grid.
@@ -229,7 +244,7 @@ menu-bar app (`MenuBarExtra`) with an editor window.
   - App picker: choose from /Applications. The app's icon is used automatically.
   - Hotkey recorder for the hotkey action.
   - Live preview. Save pushes the layout to the board.
-  - Config file: `~/Library/Application Support/ThaiDeck/config.json`, human-readable, written
+  - Config file: `~/Library/Application Support/LongDeck/config.json`, human-readable, written
     only by the app.
 - **Key-face rendering**: the app renders each key face (icon, label in any font or emoji, colours)
   to a bitmap at the cell size and sends it. The board only blits it. This side-steps the board's
@@ -291,8 +306,8 @@ menu-bar app (`MenuBarExtra`) with an editor window.
 
 ### Milestones (each ends usable)
 
-1. **Link and keys**: pairing, auth, protocol, layout cache, custom pages from a built-in sample
-   layout, and all key actions. Config is the JSON file the app will later edit.
+1. **Link and keys**: the LongDeck rename, pairing, auth, protocol, layout cache, custom pages from a
+   built-in sample layout, and all key actions. Config is the JSON file the app will later edit.
 2. **Live widgets**: stats sampler, the `stat`, `volume` and `clock` widgets, offline state.
 3. **Claude**: installer, hook listener, statusLine wrapper, the `claude_*` widgets, the permission
    overlay, answers through iTerm2.
@@ -315,7 +330,7 @@ menu-bar app (`MenuBarExtra`) with an editor window.
 
 - WebSocket library choice. Exact JSON field names and the binary face frame layout.
 - Whether to enlarge the data partition (16 MB flash allows it) or bound the face cache by LRU.
-- Key press visuals, the dimmed-offline style, and overlay styling (the ThaiClock palette in
+- Key press visuals, the dimmed-offline style, and overlay styling (the existing palette in
   `ui_internal.h`).
 - Swift project structure, test layout, and how to provision the stable signing identity.
 - Default sample layout for milestone 1. Suggested Dev page: VS Code, iTerm2, Chrome, Claude
