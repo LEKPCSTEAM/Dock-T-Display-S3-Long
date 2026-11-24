@@ -78,6 +78,14 @@ bool deck_store_save_face(uint16_t id, uint16_t w, uint16_t h, const uint8_t *px
     return ok;
 }
 
+bool deck_store_face_exists(uint16_t id)
+{
+    if (!s_ok) return false;
+    char path[32];
+    face_path(path, sizeof(path), id);
+    return LittleFS.exists(path);
+}
+
 bool deck_store_load_face(uint16_t id, lv_img_dsc_t *out)
 {
     if (!s_ok || !out) return false;

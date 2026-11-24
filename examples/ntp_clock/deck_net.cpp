@@ -28,10 +28,22 @@ struct OutMsg {
 
 struct FaceJob {
     uint8_t *buf;
-    uint16_t id, w, h;
+    uint16_t id, w, h, rows;
 };
 
-static WebSocketsServer s_ws(DECK_WS_PORT);
+class DeckWs : public WebSocketsServer {
+ public:
+    using WebSocketsServer::WebSocketsServer;
+    void resetHeartbeat(uint8_t num)
+    {
+        if (num >= SLOTS) return;
+        _clients[num].pongTimeoutCount = 0;
+        _clients[num].pongReceived     = false;
+        _clients[num].lastPing         = millis();
+    }
+};
+
+static DeckWs           s_ws(DECK_WS_PORT);
 static DeckSession     *s_sess[SLOTS];
 static bool             s_was_ready[SLOTS];
 static FaceJob          s_jobs[MAX_FACE_JOBS];
@@ -95,13 +107,14 @@ static void on_face(void *, const DeckFaceChunk *c)
         if (j.buf && j.id == c->id) job = &j;
         if (!j.buf && !spare) spare = &j;
     }
-    if (job && (job->w != c->w || job->h != c->h)) {
+    if (job && (job->w != c->w || job->h != c->h || c->y == 0 || c->y != job->rows)) {
         free(job->buf);
         *job = FaceJob{};
         spare = job;
         job   = nullptr;
     }
     if (!job) {
+        if (c->y != 0) return;
         if (!spare) {
             Serial.printf("[deck] face %u dropped: too many in progress\n", c->id);
             return;
@@ -118,7 +131,8 @@ static void on_face(void *, const DeckFaceChunk *c)
     }
 
     memcpy(job->buf + (size_t)c->y * c->w * 3, c->px, c->px_len);
-    if (c->y + c->n != c->h) return;
+    job->rows = c->y + c->n;
+    if (job->rows != c->h) return;
 
     if (deck_store_save_face(job->id, job->w, job->h, job->buf)) {
         lock();
@@ -167,6 +181,18 @@ static void send_sealed(uint8_t num, const char *type, const std::string &body)
     if (s_sess[num] && s_sess[num]->seal(type, body.c_str(), &frame)) s_ws.sendTXT(num, frame.c_str(), frame.size());
 }
 
+static bool cache_complete()
+{
+    if (!s_snap_has_layout) return false;
+    for (int p = 0; p < s_snap_layout.page_count; p++) {
+        const DeckPage &pg = s_snap_layout.pages[p];
+        for (int i = 0; i < pg.count; i++) {
+            if (!deck_store_face_exists(pg.widgets[i].face)) return false;
+        }
+    }
+    return true;
+}
+
 static void check_became_ready(uint8_t num)
 {
     DeckSession *s = s_sess[num];
@@ -179,7 +205,7 @@ static void check_became_ready(uint8_t num)
         }
     }
     JsonDocument d;
-    d["hash"] = s_snap_has_layout ? s_snap_layout.hash : "";
+    d["hash"] = cache_complete() ? s_snap_layout.hash : "";
     send_sealed(num, "hello_state", to_json(d));
     Serial.printf("[deck] slot %u ready\n", num);
 }
@@ -189,6 +215,7 @@ static void on_ws_event(uint8_t num, WStype_t type, uint8_t *payload, size_t len
     if (num >= SLOTS) return;
     switch (type) {
     case WStype_CONNECTED:
+        s_ws.resetHeartbeat(num);
         delete s_sess[num];
         s_sess[num]      = new DeckSession(&s_env);
         s_was_ready[num] = false;
@@ -197,6 +224,7 @@ static void on_ws_event(uint8_t num, WStype_t type, uint8_t *payload, size_t len
         Serial.printf("[deck] slot %u connected\n", num);
         break;
     case WStype_DISCONNECTED:
+        s_ws.resetHeartbeat(num);
         if (s_was_ready[num]) free_jobs();
         delete s_sess[num];
         s_sess[num]      = nullptr;
