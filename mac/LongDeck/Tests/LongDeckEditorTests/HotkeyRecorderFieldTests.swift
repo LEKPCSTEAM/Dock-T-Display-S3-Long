@@ -4,7 +4,43 @@ import Testing
 @testable import LongDeckEditor
 
 @Suite(.serialized) @MainActor struct HotkeyRecorderFieldTests {
-    private func makeField() -> (HotkeyRecorderField, NSWindow, [DeckAction]) {
+    private final class Counter {
+        var pushes = 0
+        var pops = 0
+    }
+
+    private func installFakeMode() -> Counter {
+        let counter = Counter()
+        HotkeyRecorderField.symbolicHotKeys = SymbolicHotKeyMode(
+            push: { counter.pushes += 1; return counter.pushes },
+            pop: { _ in counter.pops += 1 })
+        return counter
+    }
+
+    @Test func symbolicHotKeysPushedOncePerRecordingAndPopped() {
+        let counter = installFakeMode()
+        let (field, window, _) = makeField(fake: false)
+        window.makeFirstResponder(field)
+        #expect(counter.pushes == 1 && counter.pops == 0)
+        window.makeFirstResponder(nil)
+        #expect(counter.pushes == 1 && counter.pops == 1)
+        window.makeFirstResponder(nil)
+        #expect(counter.pops == 1)
+        window.makeFirstResponder(field)
+        field.removeFromSuperview()
+        #expect(counter.pushes == 2 && counter.pops == 2)
+    }
+
+    @Test func symbolicHotKeysPoppedAfterRecordedShortcut() {
+        let counter = installFakeMode()
+        let (field, window, _) = makeField(fake: false)
+        window.makeFirstResponder(field)
+        field.handle(keyDown(21, flags: [.command, .shift], window: window))
+        #expect(counter.pushes == 1 && counter.pops == 1)
+    }
+
+    private func makeField(fake: Bool = true) -> (HotkeyRecorderField, NSWindow, [DeckAction]) {
+        if fake { _ = installFakeMode() }
         _ = NSApplication.shared
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
                               styleMask: [.titled], backing: .buffered, defer: false)

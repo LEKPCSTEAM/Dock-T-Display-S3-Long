@@ -56,6 +56,12 @@ import Testing
         #expect(!UndoRouting.storeHandlesUndo(firstResponder: NSTextView()))
     }
 
+    @Test func deleteRoutingSkipsTextEditing() {
+        #expect(DeleteRouting.removesWidget(firstResponder: nil))
+        #expect(DeleteRouting.removesWidget(firstResponder: NSView()))
+        #expect(!DeleteRouting.removesWidget(firstResponder: NSTextView()))
+    }
+
     @Test func issueStableIdsDiffer() {
         let s = withNewKey()
         let ids = s.issues.map(\.stableId)

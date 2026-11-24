@@ -233,9 +233,7 @@ public struct EditorModel: Sendable {
                 key.longAction = chosen
             case .primary:
                 var previousName: String?
-                if case .openApp(let old) = key.action {
-                    previousName = URL(fileURLWithPath: old).deletingPathExtension().lastPathComponent
-                }
+                if case .openApp(let old) = key.action { previousName = AppCatalog.name(forPath: old) }
                 key.action = chosen
                 key.icon = .app(path: app.path)
                 if key.label.isEmpty || key.label == "Key" || key.label == previousName {
@@ -273,7 +271,10 @@ public struct EditorModel: Sendable {
 
     public mutating func markSaved() {
         saved = document
+        lastCoalesce = nil
     }
+
+    public func matchesSaved(_ config: DeckConfig) -> Bool { saved == config }
 
     public mutating func externalChange(_ config: DeckConfig) {
         if config == document {

@@ -16,6 +16,22 @@ enum UndoRouting {
     }
 }
 
+enum DeleteRouting {
+    static func removesWidget(firstResponder: NSResponder?) -> Bool {
+        !(firstResponder is NSText)
+    }
+
+    @MainActor
+    static func perform(remove: () -> Void) {
+        let responder = NSApp.keyWindow?.firstResponder
+        if removesWidget(firstResponder: responder) {
+            remove()
+        } else {
+            NSApp.sendAction(#selector(NSResponder.deleteToBeginningOfLine(_:)), to: nil, from: nil)
+        }
+    }
+}
+
 public struct EditorView: View {
     @ObservedObject var store: EditorStore
 
@@ -26,7 +42,7 @@ public struct EditorView: View {
     public var body: some View {
         VStack(spacing: 0) {
             if let diskError = store.diskError {
-                Text(diskError)
+                Text("config.json is invalid: " + diskError)
                     .foregroundColor(.black)
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)

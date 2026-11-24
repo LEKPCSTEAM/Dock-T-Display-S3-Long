@@ -121,6 +121,12 @@ import Testing
         #expect(!EditorModel(document: config([key("k", label: " ")]), saved: nil).hasErrors(env))
     }
 
+    @Test func emptyIconAppAsksForChoice() {
+        let c = config([key("k", icon: .app(path: ""))])
+        let found = EditorIssues.check(c, IssueEnvironment(fileExists: { _ in false }, symbolExists: { _ in true }))
+        #expect(found.map(\.message) == ["Choose an app for the icon"])
+    }
+
     @Test func tooLargeLayoutIsError() {
         let found = EditorIssues.check(fullStatPages(7), env)
         #expect(found.count == 1)

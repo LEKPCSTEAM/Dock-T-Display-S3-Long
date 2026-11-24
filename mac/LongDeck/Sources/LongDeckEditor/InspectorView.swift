@@ -92,7 +92,7 @@ public struct InspectorView: View {
             Text(title).font(.headline)
             Text(id).font(.system(.caption, design: .monospaced)).foregroundColor(.secondary)
             Spacer()
-            Button { store.remove(id) } label: { Image(systemName: "trash") }
+            Button { DeleteRouting.perform { store.remove(id) } } label: { Image(systemName: "trash") }
                 .keyboardShortcut(.delete, modifiers: .command)
                 .help("Remove (⌘⌫)")
         }

@@ -50,6 +50,7 @@ final class AppModel: ObservableObject {
     private var trustTimer: Timer?
     private var writeGuard = ConfigWriteGuard()
     var onConfigApplied: ((DeckConfig) -> Void)?
+    var onConfigInvalid: ((String) -> Void)?
     lazy var editorWindow = EditorWindowController(model: self)
 
     @Published private(set) var isTrusted = true
@@ -108,6 +109,7 @@ final class AppModel: ObservableObject {
             apply(loaded)
         case .invalid(let message):
             configError = message
+            onConfigInvalid?(message)
         }
     }
 

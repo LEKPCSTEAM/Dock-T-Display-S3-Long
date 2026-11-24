@@ -26,6 +26,7 @@ final class EditorWindowController: NSObject, NSWindowDelegate {
         let store = EditorStore(config: doc.config, onDisk: doc.onDisk, diskError: doc.diskError)
         store.onSave = { [weak model] in model?.saveFromEditor($0) ?? .failed("LongDeck is quitting") }
         model.onConfigApplied = { [weak store] in store?.externalChange($0) }
+        model.onConfigInvalid = { [weak store] in store?.externalInvalid($0) }
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 720),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -58,12 +59,14 @@ final class EditorWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         model?.onConfigApplied = nil
+        model?.onConfigInvalid = nil
         store = nil
         window = nil
         NSApp.setActivationPolicy(.accessory)
     }
 
     private func confirmSaveIfNeeded() -> Bool {
+        window?.makeFirstResponder(nil)
         guard let store, store.isDirty else { return true }
         let alert = NSAlert()
         alert.messageText = "Save changes to the layout?"

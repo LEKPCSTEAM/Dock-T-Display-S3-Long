@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import LongDeckCore
 
@@ -314,6 +315,46 @@ import Testing
         #expect(dirty.document == doc)
         dirty.externalChange(doc)
         #expect(!dirty.isDirty)
+    }
+
+    @Test func markSavedEndsCoalescing() {
+        var m = blank()
+        m.add(.key)
+        m.markSaved()
+        m.updateKey("key", coalesce: "label") { $0.label = "a" }
+        m.markSaved()
+        m.updateKey("key", coalesce: "label") { $0.label = "ab" }
+        m.undo()
+        #expect(!m.isDirty)
+        #expect(key(m, "key")?.label == "a")
+    }
+
+    @Test func matchesSavedComparesBaseline() {
+        var m = blank()
+        #expect(m.matchesSaved(blankConfig()))
+        m.add(.key)
+        #expect(m.matchesSaved(blankConfig()))
+        #expect(!m.matchesSaved(m.document))
+    }
+
+    @Test func switchingAppsReplacesBundleNameLabel() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("longdeck-tests-\(UUID().uuidString)", isDirectory: true)
+        let contents = root.appendingPathComponent("Terminal Thing.app/Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleName": "iTerm2"], format: .xml, options: 0)
+        try plist.write(to: contents.appendingPathComponent("Info.plist"))
+        defer { try? FileManager.default.removeItem(at: root) }
+        let path = root.appendingPathComponent("Terminal Thing.app").path
+        let term = AppEntry(name: AppCatalog.name(forPath: path), path: path, folder: "Test")
+        let chrome = AppEntry(name: "Chrome", path: "/Applications/Google Chrome.app", folder: "Applications")
+        var m = blank()
+        m.add(.key)
+        m.chooseApp(term, slot: .primary, for: "key")
+        #expect(key(m, "key")?.label == "iTerm2")
+        m.chooseApp(chrome, slot: .primary, for: "key")
+        #expect(key(m, "key")?.label == "Chrome")
     }
 
     @Test func selectionStaysOnCurrentPage() {

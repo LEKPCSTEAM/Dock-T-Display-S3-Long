@@ -104,7 +104,11 @@ public enum EditorIssues {
         }
         switch k.icon {
         case .app(let path)?:
-            if !env.fileExists(path) { add(.warning, "Icon app not found: \(path)") }
+            if path.isEmpty {
+                add(.warning, "Choose an app for the icon")
+            } else if !env.fileExists(path) {
+                add(.warning, "Icon app not found: \(path)")
+            }
         case .symbol(let name)?:
             if !env.symbolExists(name) { add(.warning, "Unknown SF Symbol \(name)") }
         case nil:

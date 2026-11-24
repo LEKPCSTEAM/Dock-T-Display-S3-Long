@@ -1,9 +1,21 @@
 import AppKit
+import Carbon.HIToolbox
 import LongDeckCore
 import SwiftUI
 
+struct SymbolicHotKeyMode {
+    var push: () -> Any?
+    var pop: (Any) -> Void
+
+    static let system = SymbolicHotKeyMode(
+        push: { PushSymbolicHotKeyMode(OptionBits(kHIHotKeyModeAllDisabled)) },
+        pop: { PopSymbolicHotKeyMode($0 as! UnsafeMutableRawPointer) })
+}
+
 final class HotkeyRecorderField: NSView {
     nonisolated(unsafe) static var installedMonitors = 0
+    nonisolated(unsafe) static var symbolicHotKeys = SymbolicHotKeyMode.system
+    private var symbolicToken: Any?
 
     var keyCode: UInt16 {
         didSet { needsDisplay = true }
@@ -41,6 +53,7 @@ final class HotkeyRecorderField: NSView {
             }
             Self.installedMonitors += 1
         }
+        if symbolicToken == nil { symbolicToken = Self.symbolicHotKeys.push() }
         heldFlags = []
         isRecording = true
         needsDisplay = true
@@ -63,6 +76,7 @@ final class HotkeyRecorderField: NSView {
             NSEvent.removeMonitor(monitor)
             Self.installedMonitors -= 1
         }
+        if let symbolicToken { Self.symbolicHotKeys.pop(symbolicToken) }
     }
 
     @discardableResult
@@ -97,6 +111,10 @@ final class HotkeyRecorderField: NSView {
             NSEvent.removeMonitor(monitor)
             self.monitor = nil
             Self.installedMonitors -= 1
+        }
+        if let symbolicToken {
+            Self.symbolicHotKeys.pop(symbolicToken)
+            self.symbolicToken = nil
         }
         isRecording = false
         needsDisplay = true

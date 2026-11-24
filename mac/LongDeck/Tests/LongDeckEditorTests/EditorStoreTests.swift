@@ -67,6 +67,36 @@ import Testing
         #expect(!s.closePromptDetail.contains("changed on disk"))
     }
 
+    @Test func unchangedFileWhileDirtyRaisesNoConflict() {
+        let s = store(blank())
+        s.renamePage(at: 0, to: "Mine")
+        s.externalChange(blank())
+        #expect(!s.externalConflict)
+        #expect(s.model.document.pages[0].name == "Mine")
+    }
+
+    @Test func conflictClearsWhenUndoneToClean() {
+        let (s, _, _) = dirtyWithExternal()
+        #expect(s.externalConflict)
+        s.undo()
+        #expect(!s.isDirty && !s.externalConflict)
+    }
+
+    @Test func validExternalConfigClearsDiskError() {
+        let s = store(blank(), onDisk: false, diskError: "bad")
+        s.externalChange(blank())
+        #expect(s.diskError == nil)
+        s.externalInvalid("worse")
+        #expect(s.diskError == "worse")
+    }
+
+    @Test func reloadFromDiskClearsDiskError() {
+        let (s, _, _) = dirtyWithExternal()
+        s.externalInvalid("bad")
+        s.reloadFromDisk()
+        #expect(s.diskError == nil)
+    }
+
     @Test func cleanExternalChangeRaisesNoConflict() {
         let s = store(blank())
         var theirs = blank()
