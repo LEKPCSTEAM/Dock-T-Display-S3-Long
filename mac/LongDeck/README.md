@@ -45,7 +45,7 @@ Board answers (Approve, Always, Deny, interrupt) are refused, and the board show
 - Always: Bash only, single line, at most 55 bytes, no shell operators, redirections or surrounding whitespace, and the rule Claude Code would save must equal the whole command. Edit, Write and Read Always is never sent.
 - Interrupt sends Escape only when the spinner row shows `esc to interrupt`.
 
-Refusal codes (logged, not shown): `unknown_session`, `no_pane`, `stale`, `unverifiable`, `tmux`, `not_claude`, `pane_busy`, `no_prompt`, `mismatch`, `no_always`, `not_working`, `no_client`; `busy` and `proto` come from the board protocol. Known limits: the prompt layout is matched against fixtures and still needs live checks, and long wrapped commands are usually refused.
+Refusal codes (logged, not shown): `unknown_session`, `no_pane`, `stale`, `unverifiable`, `tmux`, `not_claude`, `pane_busy`, `no_prompt`, `mismatch`, `no_always`, `not_working`, `no_client`; `ClaudeController` also returns `proto` (unparsable request that has a request id) and `busy` (duplicate request id, or the pane already has an action in flight). Known limits: the prompt layout is matched against fixtures and still needs live checks, and long wrapped commands are usually refused.
 
 Config entries (the first-run sample has a `Claude` page; `claude_sessions` needs w of at least 2):
 
