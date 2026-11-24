@@ -1,0 +1,53 @@
+#pragma once
+#include <stddef.h>
+#include <stdint.h>
+
+#define DECK_CLAUDE_MAX_SESSIONS 8
+#define DECK_CLAUDE_BODY_MAX     4096
+#define DECK_CLAUDE_ID_MAX       40
+#define DECK_CLAUDE_REQ_MAX      16
+#define DECK_CLAUDE_PROJECT_MAX  24
+#define DECK_CLAUDE_TOOL_MAX     16
+#define DECK_CLAUDE_MODEL_MAX    16
+#define DECK_CLAUDE_SUMMARY_MAX  84
+#define DECK_CLAUDE_REASON_MAX   16
+
+enum DeckClaudeState : uint8_t { DCS_WORKING = 0, DCS_PERMISSION, DCS_WAITING, DCS_DONE, DCS_COUNT };
+enum DeckClaudeAction : uint8_t { DCA_APPROVE = 0, DCA_ALWAYS, DCA_DENY, DCA_INTERRUPT, DCA_FOCUS, DCA_COUNT };
+
+struct DeckClaudeSession {
+  char id[DECK_CLAUDE_ID_MAX];
+  char project[DECK_CLAUDE_PROJECT_MAX];
+  char model[DECK_CLAUDE_MODEL_MAX];
+  uint8_t state;
+  int8_t ctx;          // -1 unknown
+  int32_t cost_cents;  // -1 unknown
+  bool tmux;
+};
+struct DeckClaudeWindow { bool known; uint8_t pct; uint32_t resets_at; };
+struct DeckClaudePrompt {
+  bool present, tmux;
+  uint8_t pending;
+  char session[DECK_CLAUDE_ID_MAX];
+  char request[DECK_CLAUDE_REQ_MAX];
+  char project[DECK_CLAUDE_PROJECT_MAX];
+  char tool[DECK_CLAUDE_TOOL_MAX];
+  char summary[DECK_CLAUDE_SUMMARY_MAX];
+};
+struct DeckClaude {
+  uint8_t count;
+  DeckClaudeSession s[DECK_CLAUDE_MAX_SESSIONS];
+  DeckClaudeWindow five_hour, seven_day;
+  DeckClaudePrompt prompt;
+};
+struct DeckClaudeAck { bool ok; char request[DECK_CLAUDE_REQ_MAX]; char reason[DECK_CLAUDE_REASON_MAX]; };
+
+bool        deck_claude_parse(const char *json, size_t len, DeckClaude *out);         // out untouched on false
+bool        deck_claude_ack_parse(const char *json, size_t len, DeckClaudeAck *out);  // out untouched on false
+bool        deck_claude_action_body(const char *session, const char *request, uint8_t action, char *out, size_t out_len);
+int         deck_claude_state_from_name(const char *name);  // -1 if unknown
+const char *deck_claude_action_name(uint8_t action);        // "" if out of range
+void        deck_claude_copy(char *dst, size_t dst_len, const char *src);
+void        deck_claude_format_reset(uint32_t resets_at, uint32_t now, char *out, size_t len);
+void        deck_claude_format_cost(int32_t cents, char *out, size_t len);
+bool        deck_claude_prompt_same(const DeckClaudePrompt *a, const DeckClaudePrompt *b);

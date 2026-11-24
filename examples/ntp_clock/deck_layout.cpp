@@ -54,6 +54,8 @@ static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char 
   if (strcmp(type, "key") == 0) w->type = DW_KEY;
   else if (strcmp(type, "volume") == 0) w->type = DW_VOLUME;
   else if (strcmp(type, "clock") == 0) w->type = DW_CLOCK;
+  else if (strcmp(type, "claude_usage") == 0) w->type = DW_CLAUDE_USAGE;
+  else if (strcmp(type, "claude_sessions") == 0) w->type = DW_CLAUDE_SESSIONS;
   else if (strcmp(type, "stat") == 0) {
     const int metric = deck_metric_from_name(jw["metric"] | (const char *)nullptr);
     const int style = deck_style_from_name(jw["style"] | (const char *)nullptr);
@@ -69,6 +71,7 @@ static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char 
       !get_u8(jw["w"], 1, DECK_COLS, &w->w) || !get_u8(jw["h"], 1, DECK_ROWS, &w->h))
     return fail(err, err_len, "widget geometry invalid");
   if (w->col + w->w > DECK_COLS || w->row + w->h > DECK_ROWS) return fail(err, err_len, "widget outside grid");
+  if (w->type == DW_CLAUDE_SESSIONS && w->w < 2) w->type = DW_UNKNOWN;
 
   if (w->type == DW_KEY) {
     const int face = jw["face"] | 0;

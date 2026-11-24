@@ -258,8 +258,50 @@ void test_live_widgets_respect_grid() {
   expect_reject(layout(page("P", key("a", 0, 0, 1, 1, 1)) + "," + page("Q", stat("a", 0, 0, 1, "cpu", "bar"))));
 }
 
+void test_parse_claude_example() {
+  const char *L2 =
+      "{\"hash\":\"0123456789abcdef\",\"pages\":[{\"name\":\"Claude\",\"widgets\":["
+      "{\"col\":0,\"face\":0,\"h\":2,\"id\":\"ccs\",\"row\":0,\"type\":\"claude_sessions\",\"w\":4},"
+      "{\"col\":4,\"face\":0,\"h\":1,\"id\":\"ccu\",\"row\":0,\"type\":\"claude_usage\",\"w\":4}]}]}";
+  DeckLayout l;
+  char err[64];
+  TEST_ASSERT_TRUE(parse(L2, &l, err));
+  const DeckWidget &a = l.pages[0].widgets[0];
+  const DeckWidget &b = l.pages[0].widgets[1];
+  TEST_ASSERT_EQUAL_UINT8(DW_CLAUDE_SESSIONS, a.type);
+  TEST_ASSERT_EQUAL_UINT8(4, a.w);
+  TEST_ASSERT_EQUAL_UINT8(2, a.h);
+  TEST_ASSERT_EQUAL_UINT8(DW_CLAUDE_USAGE, b.type);
+  TEST_ASSERT_EQUAL_UINT8(4, b.w);
+  TEST_ASSERT_EQUAL_UINT8(1, b.h);
+  TEST_ASSERT_EQUAL_UINT16(0, a.face);
+  TEST_ASSERT_EQUAL_UINT16(0, b.face);
+  TEST_ASSERT_FALSE(a.has_long);
+  TEST_ASSERT_FALSE(b.has_long);
+}
+
+void test_claude_sessions_needs_two_columns() {
+  DeckLayout l;
+  char err[64];
+  TEST_ASSERT_TRUE(parse(layout(page("P", key("c", 0, 0, 1, 1, 0, "claude_sessions"))), &l, err));
+  TEST_ASSERT_EQUAL_UINT8(DW_UNKNOWN, l.pages[0].widgets[0].type);
+  expect_reject(layout(page("P", key("c", 0, 0, 1, 1, 0, "claude_sessions") + "," + key("a", 0, 0, 1, 1, 1))));
+}
+
+void test_claude_face_and_long_ignored() {
+  DeckLayout l;
+  char err[64];
+  TEST_ASSERT_TRUE(parse(layout(page("P", key("u", 0, 0, 1, 1, 9, "claude_usage", true))), &l, err));
+  TEST_ASSERT_EQUAL_UINT8(DW_CLAUDE_USAGE, l.pages[0].widgets[0].type);
+  TEST_ASSERT_EQUAL_UINT16(0, l.pages[0].widgets[0].face);
+  TEST_ASSERT_FALSE(l.pages[0].widgets[0].has_long);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_parse_claude_example);
+  RUN_TEST(test_claude_sessions_needs_two_columns);
+  RUN_TEST(test_claude_face_and_long_ignored);
   RUN_TEST(test_parse_live_example);
   RUN_TEST(test_every_metric_and_style_name);
   RUN_TEST(test_stat_unknown_metric_is_placeholder);

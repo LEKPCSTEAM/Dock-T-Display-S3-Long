@@ -9,7 +9,8 @@
 #define DECK_MAX_FACES 128
 #define DECK_LAYOUT_MAX_BYTES (16 * 1024)
 
-enum DeckWidgetType : uint8_t { DW_KEY = 0, DW_STAT = 1, DW_VOLUME = 2, DW_CLOCK = 3, DW_UNKNOWN = 255 };
+enum DeckWidgetType : uint8_t { DW_KEY = 0, DW_STAT = 1, DW_VOLUME = 2, DW_CLOCK = 3,
+                                 DW_CLAUDE_SESSIONS = 4, DW_CLAUDE_USAGE = 5, DW_UNKNOWN = 255 };
 enum DeckMetric : uint8_t {
   DM_CPU = 0, DM_RAM, DM_GPU, DM_TEMP, DM_NET_DOWN, DM_NET_UP, DM_DISK_FREE, DM_DISK_IO, DM_BATTERY, DM_COUNT
 };
