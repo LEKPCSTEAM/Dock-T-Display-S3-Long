@@ -38,6 +38,10 @@ bool settings_get_wifi(char *ssid, size_t ssid_len, char *pass, size_t pass_len)
 void settings_set_wifi(const char *ssid, const char *pass);
 void settings_clear_wifi();
 
+bool settings_get_deck_key(uint8_t key[32]);
+void settings_set_deck_key(const uint8_t key[32]);
+void settings_clear_deck_key();
+
 enum NetPhase : uint8_t {
     NET_BOOTING = 0,
     NET_CONNECTING,  // trying the saved network

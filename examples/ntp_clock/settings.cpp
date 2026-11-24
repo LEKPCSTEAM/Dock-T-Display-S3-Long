@@ -194,3 +194,38 @@ void settings_clear_wifi()
     }
     unlock();
 }
+
+bool settings_get_deck_key(uint8_t key[32])
+{
+    lock();
+    Preferences p;
+    bool        ok = false;
+    if (p.begin(NVS_NS, false)) {
+        ok = p.isKey("deck_key") && p.getBytesLength("deck_key") == 32 && p.getBytes("deck_key", key, 32) == 32;
+        p.end();
+    }
+    unlock();
+    return ok;
+}
+
+void settings_set_deck_key(const uint8_t key[32])
+{
+    lock();
+    Preferences p;
+    if (p.begin(NVS_NS, false)) {
+        if (p.putBytes("deck_key", key, 32) != 32) Serial.println("[settings] deck key write failed");
+        p.end();
+    }
+    unlock();
+}
+
+void settings_clear_deck_key()
+{
+    lock();
+    Preferences p;
+    if (p.begin(NVS_NS, false)) {
+        p.remove("deck_key");
+        p.end();
+    }
+    unlock();
+}

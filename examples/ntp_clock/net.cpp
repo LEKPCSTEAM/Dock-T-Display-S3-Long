@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include "app_state.h"
+#include "deck_net.h"
 #include "web_pages.h"
 
 #define NET_TASK_STACK        16384
@@ -318,7 +319,10 @@ static void on_connected(uint32_t now)
 
     if (mdns_started) MDNS.end();
     mdns_started = MDNS.begin(CLOCK_HOSTNAME);
-    if (mdns_started) MDNS.addService("http", "tcp", 80);
+    if (mdns_started) {
+        MDNS.addService("http", "tcp", 80);
+        deck_net_on_connected();
+    }
 
     if (!ntp_started) {
         sntp_set_time_sync_notification_cb(on_ntp_sync);
@@ -556,6 +560,13 @@ static void handle_reboot()
     if (reboot_at == 0) reboot_at = 1;
 }
 
+static void handle_deck_forget()
+{
+    if (reject_in_portal() || reject_cross_site()) return;
+    deck_net_forget();
+    send_json(200, "{\"ok\":true}");
+}
+
 static void server_setup()
 {
     static const char *const probes[] = {"/generate_204", "/gen_204", "/hotspot-detect.html", "/library/test/success.html",
@@ -571,6 +582,7 @@ static void server_setup()
     s_server.on("/api/sync", HTTP_POST, handle_sync);
     s_server.on("/api/portal", HTTP_POST, handle_portal_req);
     s_server.on("/api/reboot", HTTP_POST, handle_reboot);
+    s_server.on("/api/deck/forget", HTTP_POST, handle_deck_forget);
     s_server.onNotFound(handle_not_found);
     static const char *headers[] = {"Origin", "Host"};
     s_server.collectHeaders(headers, 2);
@@ -701,8 +713,9 @@ static void net_task(void *)
     snprintf(ap_ssid, sizeof(ap_ssid), "%s%02X%02X", CLOCK_AP_PREFIX, mac[4], mac[5]);
 
     server_setup();
+    deck_net_begin();
 
-    has_creds         = settings_get_wifi(cur_ssid, sizeof(cur_ssid), cur_pass, sizeof(cur_pass));
+    has_creds        = settings_get_wifi(cur_ssid, sizeof(cur_ssid), cur_pass, sizeof(cur_pass));
     seen_settings_ver = settings_version();
     connect_start     = millis();
     last_retry        = connect_start;
@@ -716,6 +729,7 @@ static void net_task(void *)
     for (;;) {
         s_server.handleClient();
         if (portal_active) s_dns.processNextRequest();
+        deck_net_loop();
         // Read after the handlers: they stamp millis() and deltas are unsigned.
         uint32_t now = millis();
         net_tick(now);

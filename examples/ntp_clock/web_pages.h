@@ -158,6 +158,7 @@ button:active{opacity:.7}
 <div class="card">
 <button id="bs" type="button">ซิงค์เวลาตอนนี้</button>
 <button id="bw" type="button">เปลี่ยน WiFi</button>
+<button id="bf" type="button">ลืม Mac ที่จับคู่ไว้</button>
 <button id="br2" class="d" type="button">รีสตาร์ท</button>
 </div>
 <div id="toast"></div>
@@ -191,6 +192,9 @@ $("bs").onclick=function(){post("/api/sync").then(function(){toast("กำลั
 $("bw").onclick=function(){
 if(!confirm("เปิดโหมดตั้งค่า WiFi ใช่หรือไม่"))return;
 post("/api/portal").then(function(j){toast("เชื่อมต่อ WiFi ชื่อ "+(j.ap||"LongDeck-xxxx")+" แล้วเปิด 192.168.4.1")}).catch(function(){toast("เชื่อมต่อไม่ได้")})};
+$("bf").onclick=function(){
+if(!confirm("ลืม Mac ที่จับคู่ไว้ใช่หรือไม่"))return;
+post("/api/deck/forget").then(function(){toast("ลืม Mac แล้ว")}).catch(function(){toast("เชื่อมต่อไม่ได้")})};
 $("br2").onclick=function(){
 if(!confirm("รีสตาร์ทนาฬิกาใช่หรือไม่"))return;
 post("/api/reboot").then(function(){toast("กำลังรีสตาร์ท...")}).catch(function(){toast("กำลังรีสตาร์ท...")})};
