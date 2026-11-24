@@ -68,9 +68,6 @@ public enum ClaudeInstaller {
             throw ClaudeInstallError.wrapperWithoutState
         }
 
-        var backupPath: String?
-        if let original { backupPath = try writeBackup(original, of: settingsURL, now: now).path }
-
         var hooks: JSONValue
         var createdHooksKey = false
         switch root["hooks"] {
@@ -97,6 +94,9 @@ public enum ClaudeInstaller {
             hooks = hooks.setting(name, .array(arr))
         }
         root = root.setting("hooks", hooks)
+
+        var backupPath: String?
+        if let original { backupPath = try writeBackup(original, of: settingsURL, now: now).path }
 
         var previousStatusLine: String?
         var previousCommand: String?
@@ -227,8 +227,23 @@ public enum ClaudeInstaller {
     }
 
     private static func writeFile(_ data: Data, to url: URL, mode: Int) throws {
-        try data.write(to: url, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
+        unlink(url.path)
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL, mode_t(mode))
+        guard fd >= 0 else { throw ClaudeInstallError.writeFailed(String(cString: strerror(errno))) }
+        var failure: String?
+        if fchmod(fd, mode_t(mode)) != 0 { failure = String(cString: strerror(errno)) }
+        data.withUnsafeBytes { buf in
+            var off = 0
+            while failure == nil, off < buf.count {
+                let n = write(fd, buf.baseAddress! + off, buf.count - off)
+                if n < 0 { failure = String(cString: strerror(errno)) } else { off += n }
+            }
+        }
+        close(fd)
+        if let failure {
+            unlink(url.path)
+            throw ClaudeInstallError.writeFailed(failure)
+        }
     }
 
     private static func fileMode(_ url: URL) throws -> Int {
@@ -242,10 +257,10 @@ public enum ClaudeInstaller {
         let tmp = url.deletingLastPathComponent()
             .appendingPathComponent(".\(url.lastPathComponent).longdeck-\(UUID().uuidString).tmp")
         do {
-            try Data(JSONText.pretty(root).utf8).write(to: tmp)
-            try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: tmp.path)
+            try writeFile(Data(JSONText.pretty(root).utf8), to: tmp, mode: mode)
+        } catch let e as ClaudeInstallError {
+            throw e
         } catch {
-            try? FileManager.default.removeItem(at: tmp)
             throw ClaudeInstallError.writeFailed("\(error)")
         }
         if rename(tmp.path, url.path) != 0 {

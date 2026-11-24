@@ -211,6 +211,32 @@ private let expectedGroup =
         }
     }
 
+    @Test func badHooksShapeLeavesNoBackup() throws {
+        for text in ["{\"hooks\":[]}\n", "{\"hooks\":{\"Stop\":{}}}\n"] {
+            let env = try makeEnv(settings: text)
+            #expect(throws: ClaudeInstallError.self) {
+                try ClaudeInstaller.install(env.paths, token: token, now: now)
+            }
+            #expect(try env.settingsText() == text)
+            #expect(try env.backups().isEmpty)
+            #expect(!FileManager.default.fileExists(atPath: env.wrapper.path))
+            #expect(!FileManager.default.fileExists(atPath: env.state.path))
+        }
+    }
+
+    @Test func createdFilesAreOwnerOnlyAfterCall() throws {
+        let env = try makeEnv(settings: nil)
+        try ClaudeInstaller.install(env.paths, token: token, now: now)
+        func mode(_ u: URL) throws -> Int? {
+            try FileManager.default.attributesOfItem(atPath: u.path)[.posixPermissions] as? Int
+        }
+        #expect(try mode(env.settings) == 0o600)
+        #expect(try mode(env.state) == 0o600)
+        #expect(try mode(env.wrapper) == 0o700)
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: env.root.path).filter { $0.hasSuffix(".tmp") }
+        #expect(leftovers.isEmpty)
+    }
+
     @Test func wrapperWithoutStateRefused() throws {
         let env = try makeEnv(settings: "{\"statusLine\":{\"type\":\"command\",\"command\":\"x\"}}\n")
         let quoted = StatusLineWrapper.shellQuote(env.wrapper.path)
