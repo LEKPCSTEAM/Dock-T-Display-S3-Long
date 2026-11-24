@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject var claude: ClaudeController
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -24,6 +25,13 @@ struct MenuView: View {
         Button("Open config folder") { model.openConfigFolder() }
         if !model.isTrusted {
             Button("Grant Accessibility…") { model.openAccessibilitySettings() }
+        }
+        Divider()
+        Text(claude.statusText)
+        if claude.installed {
+            Button("Uninstall Claude Code integration…") { claude.uninstall() }
+        } else {
+            Button("Install Claude Code integration…") { claude.install() }
         }
         Divider()
         Button("Quit") { NSApp.terminate(nil) }

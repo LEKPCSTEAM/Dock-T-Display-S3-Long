@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     let discovery = Discovery()
     let system = RealSystemControl()
     let volume = CoreAudioVolume()
+    let claude = ClaudeController()
     private var sampler = StatsSampler(source: MacStatsSource())
     private var statsTimer: Timer?
 
@@ -66,6 +67,8 @@ final class AppModel: ObservableObject {
         }
         volume.start()
         startStatsTimer()
+        claude.onBody = { [weak self] in self?.connection?.sendClaude($0) }
+        claude.start()
     }
 
     private func startStatsTimer() {
@@ -186,6 +189,10 @@ final class AppModel: ObservableObject {
         let conn = DeckConnection(
             board: board, pairing: pairing, runner: ActionRunner(system: system),
             configProvider: { [weak self] in self?.config }, volume: volume,
+            claudeBody: { [weak self] in self?.claude.currentBody.isEmpty == false ? self?.claude.currentBody : nil },
+            onClaudeAction: { [weak self] body in
+                self?.claude.handleAction(body) { [weak self] ack in self?.connection?.sendClaudeAck(ack) }
+            },
             onEvent: { [weak self] event in self?.handle(event, from: board) }
         )
         connection = conn

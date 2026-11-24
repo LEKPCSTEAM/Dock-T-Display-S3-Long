@@ -12,7 +12,7 @@ struct LongDeckApp: App {
 
     var body: some Scene {
         MenuBarExtra("LongDeck", systemImage: "square.grid.3x3") {
-            MenuView(model: model)
+            MenuView(model: model, claude: model.claude)
         }
         Window("Pair with board", id: "pair") {
             PairView(model: model, discovery: model.discovery)

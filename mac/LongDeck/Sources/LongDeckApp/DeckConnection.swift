@@ -20,6 +20,8 @@ final class DeckConnection {
     private let configProvider: () -> DeckConfig?
     private let onEvent: (ConnectionEvent) -> Void
     private let volume: VolumeControl
+    private let claudeBody: () -> String?
+    private let onClaudeAction: (String) -> Void
 
     private var link = LiveLink()
     private var pushGeneration = 0
@@ -39,9 +41,12 @@ final class DeckConnection {
     init(
         board: DiscoveredBoard, pairing: Bool, runner: ActionRunner,
         configProvider: @escaping () -> DeckConfig?, volume: VolumeControl,
+        claudeBody: @escaping () -> String?, onClaudeAction: @escaping (String) -> Void,
         onEvent: @escaping (ConnectionEvent) -> Void
     ) {
         self.volume = volume
+        self.claudeBody = claudeBody
+        self.onClaudeAction = onClaudeAction
         self.board = board
         self.pairing = pairing
         self.runner = runner
@@ -87,6 +92,14 @@ final class DeckConnection {
 
     func sendVolume(_ state: VolumeState) {
         if let frame = link.volumeFrame(body: state.jsonBody) { sendFrame(frame) }
+    }
+
+    func sendClaude(_ body: String) {
+        if let frame = link.claudeFrame(body: body) { sendFrame(frame) }
+    }
+
+    func sendClaudeAck(_ body: String) {
+        if let frame = link.ackFrame(body: body) { sendFrame(frame) }
     }
 
     private func sendFrame(_ f: OutFrame) {
@@ -178,6 +191,7 @@ final class DeckConnection {
                 opener = FrameOpener(sessionKey: sessionKey)
                 link.reset()
                 sendVolume(volume.read())
+                if let body = claudeBody() { sendClaude(body) }
                 onEvent(.ready(boardId: boardId))
             case .failed(let reason):
                 if reason == "code" {
@@ -217,6 +231,8 @@ final class DeckConnection {
             let index = obj["index"] as? Int ?? -1
             link.pageChanged(index)
             onEvent(.pageChanged(index))
+        case "claude_action":
+            onClaudeAction(frame.body)
         default:
             break
         }

@@ -22,6 +22,8 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>LongDeck connects to your deck board on the local network.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>LongDeck brings the iTerm2 window of a Claude Code session to the front.</string>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_longdeck._tcp</string>
