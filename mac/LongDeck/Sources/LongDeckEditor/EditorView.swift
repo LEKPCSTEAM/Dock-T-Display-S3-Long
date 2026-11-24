@@ -17,14 +17,15 @@ enum UndoRouting {
 }
 
 enum DeleteRouting {
-    static func removesWidget(firstResponder: NSResponder?) -> Bool {
-        !(firstResponder is NSText)
+    static func removesWidget(eventIsKeyDown: Bool, firstResponder: NSResponder?) -> Bool {
+        !(eventIsKeyDown && firstResponder is NSText)
     }
 
     @MainActor
     static func perform(remove: () -> Void) {
         let responder = NSApp.keyWindow?.firstResponder
-        if removesWidget(firstResponder: responder) {
+        let isKey = NSApp.currentEvent?.type == .keyDown
+        if removesWidget(eventIsKeyDown: isKey, firstResponder: responder) {
             remove()
         } else {
             NSApp.sendAction(#selector(NSResponder.deleteToBeginningOfLine(_:)), to: nil, from: nil)

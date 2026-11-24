@@ -4,10 +4,7 @@ import LongDeckCore
 @MainActor
 public final class EditorStore: ObservableObject {
     @Published public private(set) var model: EditorModel {
-        didSet {
-            issues = model.issues(environment)
-            if !model.isDirty { pendingExternal = nil }
-        }
+        didSet { issues = model.issues(environment) }
     }
     @Published public private(set) var issues: [EditorIssue]
     @Published public var status: String
@@ -143,7 +140,11 @@ public final class EditorStore: ObservableObject {
 
     public func externalChange(_ config: DeckConfig) {
         diskError = nil
-        if model.matchesSaved(config) { return }
+        if model.matchesSaved(config) {
+            pendingExternal = nil
+            overwriteArmed = false
+            return
+        }
         model.externalChange(config)
         if model.isDirty && config != model.document {
             pendingExternal = config

@@ -57,9 +57,10 @@ import Testing
     }
 
     @Test func deleteRoutingSkipsTextEditing() {
-        #expect(DeleteRouting.removesWidget(firstResponder: nil))
-        #expect(DeleteRouting.removesWidget(firstResponder: NSView()))
-        #expect(!DeleteRouting.removesWidget(firstResponder: NSTextView()))
+        #expect(DeleteRouting.removesWidget(eventIsKeyDown: true, firstResponder: nil))
+        #expect(DeleteRouting.removesWidget(eventIsKeyDown: true, firstResponder: NSView()))
+        #expect(!DeleteRouting.removesWidget(eventIsKeyDown: true, firstResponder: NSTextView()))
+        #expect(DeleteRouting.removesWidget(eventIsKeyDown: false, firstResponder: NSTextView()))
     }
 
     @Test func issueStableIdsDiffer() {

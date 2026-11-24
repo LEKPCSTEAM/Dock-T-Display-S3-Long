@@ -75,11 +75,19 @@ import Testing
         #expect(s.model.document.pages[0].name == "Mine")
     }
 
-    @Test func conflictClearsWhenUndoneToClean() {
-        let (s, _, _) = dirtyWithExternal()
-        #expect(s.externalConflict)
+    @Test func conflictSurvivesUndoToClean() {
+        let (s, theirs, _) = dirtyWithExternal()
         s.undo()
-        #expect(!s.isDirty && !s.externalConflict)
+        #expect(!s.isDirty && s.externalConflict)
+        #expect(s.model.document == blank())
+        s.reloadFromDisk()
+        #expect(s.model.document == theirs && !s.externalConflict)
+    }
+
+    @Test func revertingFileToBaselineClearsConflict() {
+        let (s, _, _) = dirtyWithExternal()
+        s.externalChange(blank())
+        #expect(!s.externalConflict)
     }
 
     @Test func validExternalConfigClearsDiskError() {
