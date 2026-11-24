@@ -153,6 +153,35 @@ private func pubReceived(challengeFirst: Bool = true) -> (DeckHandshake, Data) {
     #expect(hs.receive(#"{"t":"pair_ok"}"#) == [.failed("proto")])
 }
 
+@Test func pairPubAfterCorrectCodeThenPairOkFails() {
+    var (hs, kp) = pubReceived()
+    _ = hs.submitPairCode(DeckCrypto.pairCodeString(key: kp))
+    let mitm = DeckCrypto.newKeyPair()
+    #expect(hs.receive(#"{"t":"pair_pub","pub":"\#(DeckCrypto.hex(mitm.pub))"}"#) == [.failed("proto")])
+    #expect(hs.receive(#"{"t":"pair_ok"}"#).first == .paired(key: kp, boardId: boardId))
+}
+
+@Test func beginPairingAfterFailedAttemptStartsClean() throws {
+    let app = DeckCrypto.newKeyPair()
+    let board1 = DeckCrypto.newKeyPair()
+    let board2 = DeckCrypto.newKeyPair()
+    var hs = makeHandshake(pair: (app.priv, app.pub))
+    _ = hs.start()
+    _ = hs.receive(challenge(paired: false))
+    _ = hs.beginPairing()
+    _ = hs.receive(#"{"t":"pair_pub","pub":"\#(DeckCrypto.hex(board1.pub))"}"#)
+    #expect(hs.submitPairCode("not-a-code") == [.failed("code")])
+    #expect(hs.receive(#"{"t":"pair_ok"}"#) == [.failed("proto")])
+
+    _ = hs.beginPairing()
+    #expect(hs.submitPairCode("000000") == [.failed("code")])
+    #expect(hs.receive(#"{"t":"pair_pub","pub":"\#(DeckCrypto.hex(board2.pub))"}"#) == [.needPairCode])
+    let shared = try DeckCrypto.shared(priv: app.priv, peerPub: board2.pub)
+    let kp = DeckCrypto.deriveKey(shared: shared, boardPub: board2.pub, appPub: app.pub)
+    #expect(sent(hs.submitPairCode(DeckCrypto.pairCodeString(key: kp))).count == 1)
+    #expect(hs.receive(#"{"t":"pair_ok"}"#).first == .paired(key: kp, boardId: boardId))
+}
+
 @Test func pairOkBeforeChallengeFails() {
     var (hs, kp) = pubReceived(challengeFirst: false)
     _ = hs.submitPairCode(DeckCrypto.pairCodeString(key: kp))

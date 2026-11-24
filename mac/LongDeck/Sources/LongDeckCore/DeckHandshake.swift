@@ -54,6 +54,8 @@ public struct DeckHandshake {
     }
 
     public mutating func beginPairing() -> [HandshakeOutput] {
+        pendingKey = nil
+        confirmSent = false
         let pair = keyPair()
         appPriv = pair.0
         appPub = pair.1
@@ -82,8 +84,8 @@ public struct DeckHandshake {
     }
 
     private mutating func onPairPub(_ obj: [String: Any]) -> [HandshakeOutput] {
-        guard let priv = appPriv,
-              let boardPub = (obj["pub"] as? String).flatMap(DeckCrypto.unhex),
+        guard let priv = appPriv, pendingKey == nil, !confirmSent else { return [.failed("proto")] }
+        guard let boardPub = (obj["pub"] as? String).flatMap(DeckCrypto.unhex),
               let shared = try? DeckCrypto.shared(priv: priv, peerPub: boardPub)
         else { return [.failed("malformed")] }
         pendingKey = DeckCrypto.deriveKey(shared: shared, boardPub: boardPub, appPub: appPub)
