@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import LongDeckCore
@@ -38,6 +39,18 @@ import Testing
 
     @Test func pageList() throws {
         try snap(PageListView(store: withNewKey()), CGSize(width: 200, height: 360), "pages")
+    }
+
+    @Test func undoRoutingSkipsTextEditing() {
+        #expect(UndoRouting.storeHandlesUndo(firstResponder: nil))
+        #expect(UndoRouting.storeHandlesUndo(firstResponder: NSView()))
+        #expect(!UndoRouting.storeHandlesUndo(firstResponder: NSTextView()))
+    }
+
+    @Test func issueStableIdsDiffer() {
+        let s = withNewKey()
+        let ids = s.issues.map(\.stableId)
+        #expect(Set(ids).count == ids.count)
     }
 
     @Test func issueListReveal() {

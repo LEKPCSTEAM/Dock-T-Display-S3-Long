@@ -1,5 +1,12 @@
+import AppKit
 import LongDeckCore
 import SwiftUI
+
+enum UndoRouting {
+    static func storeHandlesUndo(firstResponder: NSResponder?) -> Bool {
+        !(firstResponder is NSText)
+    }
+}
 
 public struct EditorView: View {
     @ObservedObject var store: EditorStore
@@ -44,18 +51,29 @@ public struct EditorView: View {
         }
     }
 
+    private func performUndo(redo: Bool) {
+        if UndoRouting.storeHandlesUndo(firstResponder: NSApp.keyWindow?.firstResponder) {
+            if redo { store.redo() } else { store.undo() }
+        } else {
+            NSApp.sendAction(Selector(redo ? "redo:" : "undo:"), to: nil, from: nil)
+        }
+    }
+
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Button("Undo") { store.undo() }
+            Button("Undo") { performUndo(redo: false) }
                 .keyboardShortcut("z", modifiers: .command)
                 .disabled(!store.model.canUndo)
-            Button("Redo") { store.redo() }
+            Button("Redo") { performUndo(redo: true) }
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!store.model.canRedo)
             Text(store.model.page.name.isEmpty ? "Untitled" : store.model.page.name).font(.headline)
             Spacer()
             Text(store.status).foregroundColor(.secondary).lineLimit(1)
-            Button("Save") { store.save() }
+            Button("Save") {
+                NSApp.keyWindow?.makeFirstResponder(nil)
+                store.save()
+            }
                 .keyboardShortcut("s", modifiers: .command)
                 .buttonStyle(.borderedProminent)
                 .disabled(!store.canSave)

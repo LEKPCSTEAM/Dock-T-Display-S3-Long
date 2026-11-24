@@ -1,6 +1,10 @@
 import LongDeckCore
 import SwiftUI
 
+extension EditorIssue {
+    var stableId: String { "\(page.map(String.init) ?? "-")|\(widget ?? "-")|\(message)" }
+}
+
 struct IssueListView: View {
     @ObservedObject var store: EditorStore
 
@@ -20,7 +24,7 @@ struct IssueListView: View {
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 4) {
-                        ForEach(Array(sorted.enumerated()), id: \.offset) { _, issue in
+                        ForEach(sorted, id: \.stableId) { issue in
                             Text(line(issue))
                                 .font(.system(size: 12))
                                 .foregroundColor(issue.severity == .error ? BoardColors.err : BoardColors.warn)

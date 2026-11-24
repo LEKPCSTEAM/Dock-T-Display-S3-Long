@@ -1,8 +1,13 @@
 import LongDeckCore
 import SwiftUI
 
+final class RemoveConfirmation: ObservableObject {
+    @Published var isPresented = false
+}
+
 struct PageListView: View {
     @ObservedObject var store: EditorStore
+    @StateObject private var confirm = RemoveConfirmation()
 
     init(store: EditorStore) {
         self.store = store
@@ -23,7 +28,13 @@ struct PageListView: View {
                 Button("+") { store.addPage() }
                     .disabled(count >= DeckConfig.maxPages)
                     .help("Add page")
-                Button("\u{2212}") { store.removePage(at: index) }
+                Button("\u{2212}") {
+                    if store.model.widgets(onPage: index).isEmpty {
+                        store.removePage(at: index)
+                    } else {
+                        confirm.isPresented = true
+                    }
+                }
                     .disabled(count <= 1)
                     .help("Remove page")
                 Button("\u{2191}") { store.movePage(from: index, to: index - 1) }
@@ -36,6 +47,10 @@ struct PageListView: View {
             .padding(8)
         }
         .frame(width: 200)
+        .alert("Remove this page and its widgets?", isPresented: $confirm.isPresented) {
+            Button("Remove", role: .destructive) { store.removePage(at: index) }
+            Button("Cancel", role: .cancel) {}
+        }
     }
 
     private func row(_ i: Int) -> some View {
