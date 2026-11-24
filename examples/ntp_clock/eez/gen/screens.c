@@ -683,7 +683,7 @@ void create_screen_system_page() {
             // label_system_night
             lv_obj_t *obj = lv_label_create(parent_obj);
             objects.label_system_night = obj;
-            lv_obj_set_pos(obj, 372, 70);
+            lv_obj_set_pos(obj, 372, 62);
             lv_obj_set_size(obj, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
             lv_obj_set_style_text_font(obj, &ui_font_th_16, LV_PART_MAIN | LV_STATE_DEFAULT);
             lv_obj_set_style_text_color(obj, lv_color_hex(theme_colors[active_theme_index][3]), LV_PART_MAIN | LV_STATE_DEFAULT);
