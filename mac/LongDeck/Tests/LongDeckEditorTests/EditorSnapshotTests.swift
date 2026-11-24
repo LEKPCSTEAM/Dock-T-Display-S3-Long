@@ -32,6 +32,15 @@ import Testing
         try snap(EditorView(store: s), CGSize(width: 1440, height: 760), "editor-full")
     }
 
+    @Test func editorExternalConflict() throws {
+        let s = withNewKey()
+        var theirs = SampleConfig.dev
+        theirs.pages[0].name = "Theirs"
+        s.externalChange(theirs)
+        #expect(s.externalConflict)
+        try snap(EditorView(store: s), CGSize(width: 1440, height: 760), "editor-external-conflict")
+    }
+
     @Test func editorDiskError() throws {
         let s = store(onDisk: false, diskError: "Invalid deck config: duplicate widget id a")
         try snap(EditorView(store: s), CGSize(width: 1440, height: 760), "editor-disk-error")

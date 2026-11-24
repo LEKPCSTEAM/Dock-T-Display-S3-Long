@@ -23,6 +23,58 @@ import Testing
                     appRoots: roots, environment: .permissive)
     }
 
+    private func dirtyWithExternal() -> (EditorStore, DeckConfig, [DeckConfig]) {
+        let s = store(blank())
+        s.renamePage(at: 0, to: "Mine")
+        var theirs = blank()
+        theirs.pages[0].name = "Theirs"
+        var saved: [DeckConfig] = []
+        s.onSave = { saved.append($0); return .savedOffline }
+        s.externalChange(theirs)
+        return (s, theirs, saved)
+    }
+
+    @Test func externalChangeWhileDirtyRaisesConflict() {
+        let (s, _, _) = dirtyWithExternal()
+        #expect(s.externalConflict)
+        #expect(s.model.document.pages[0].name == "Mine")
+    }
+
+    @Test func reloadFromDiskLoadsAndClearsDirty() {
+        let (s, theirs, _) = dirtyWithExternal()
+        s.reloadFromDisk()
+        #expect(!s.externalConflict && !s.isDirty)
+        #expect(s.model.document == theirs)
+    }
+
+    @Test func saveWithConflictAsksOnceThenWrites() {
+        let (s, _, _) = dirtyWithExternal()
+        var calls = 0
+        s.onSave = { _ in calls += 1; return .savedOffline }
+        #expect(!s.save())
+        #expect(calls == 0 && s.status.contains("Save again"))
+        #expect(s.save())
+        #expect(calls == 1 && !s.externalConflict)
+    }
+
+    @Test func closePromptWithConflictWarnsAndSavesInOneStep() {
+        let (s, _, _) = dirtyWithExternal()
+        #expect(s.closePromptDetail.contains("changed on disk"))
+        var calls = 0
+        s.onSave = { _ in calls += 1; return .savedOffline }
+        #expect(s.save(overwriteConfirmed: true))
+        #expect(calls == 1 && !s.externalConflict)
+        #expect(!s.closePromptDetail.contains("changed on disk"))
+    }
+
+    @Test func cleanExternalChangeRaisesNoConflict() {
+        let s = store(blank())
+        var theirs = blank()
+        theirs.pages[0].name = "Theirs"
+        s.externalChange(theirs)
+        #expect(!s.externalConflict && s.model.document == theirs)
+    }
+
     @Test func addPublishesAndRecomputesIssues() {
         let s = EditorStore(config: blank(), onDisk: true, diskError: nil, appRoots: [], environment: .permissive)
         var fired = 0

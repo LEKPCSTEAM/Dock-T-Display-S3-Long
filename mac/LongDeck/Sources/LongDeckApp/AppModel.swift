@@ -99,6 +99,7 @@ final class AppModel: ObservableObject {
     }
 
     func reloadConfig() {
+        writeGuard.reset()
         switch ConfigLoadOutcome.read(from: Self.configURL) {
         case .missing:
             if let data = try? SampleConfig.dev.save(to: Self.configURL) { writeGuard.recordWrite(data) }

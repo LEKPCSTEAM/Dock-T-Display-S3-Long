@@ -110,6 +110,22 @@ import Testing
         #expect(ownEcho && !externalEdit && !externalRevert)
     }
 
+    @Test func writeGuardExpiresAndResets() {
+        let a = Data("A".utf8)
+        let t0 = Date(timeIntervalSince1970: 1000)
+        var late = ConfigWriteGuard()
+        late.recordWrite(a, at: t0)
+        let expired = late.matches(a, at: t0.addingTimeInterval(ConfigWriteGuard.window + 0.1))
+        var soon = ConfigWriteGuard()
+        soon.recordWrite(a, at: t0)
+        let inTime = soon.matches(a, at: t0.addingTimeInterval(0.5))
+        var cleared = ConfigWriteGuard()
+        cleared.recordWrite(a, at: t0)
+        cleared.reset()
+        let afterReset = cleared.matches(a, at: t0)
+        #expect(!expired && inTime && !afterReset)
+    }
+
     private func mode(_ url: URL) throws -> Int {
         let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
         return (attrs[.posixPermissions] as? NSNumber)?.intValue ?? -1

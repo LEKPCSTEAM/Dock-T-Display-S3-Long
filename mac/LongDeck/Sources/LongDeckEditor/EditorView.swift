@@ -32,6 +32,17 @@ public struct EditorView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(BoardColors.warn)
             }
+            if store.externalConflict {
+                HStack {
+                    Text("config.json changed on disk. Reload discards your edits, Save overwrites it.")
+                    Spacer()
+                    Button("Reload") { store.reloadFromDisk() }
+                }
+                .foregroundColor(.black)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(BoardColors.warn)
+            }
             HStack(spacing: 0) {
                 PageListView(store: store)
                 Divider()

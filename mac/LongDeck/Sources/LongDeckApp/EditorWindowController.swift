@@ -67,12 +67,12 @@ final class EditorWindowController: NSObject, NSWindowDelegate {
         guard let store, store.isDirty else { return true }
         let alert = NSAlert()
         alert.messageText = "Save changes to the layout?"
-        alert.informativeText = "If you don't save, your changes are lost."
+        alert.informativeText = store.closePromptDetail
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Don't Save")
         alert.addButton(withTitle: "Cancel")
         switch alert.runModal() {
-        case .alertFirstButtonReturn: return store.save()
+        case .alertFirstButtonReturn: return store.save(overwriteConfirmed: true)
         case .alertSecondButtonReturn: return true
         default: return false
         }

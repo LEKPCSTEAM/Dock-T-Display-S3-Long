@@ -10,6 +10,15 @@ public final class EditorStore: ObservableObject {
     @Published public var status: String
     @Published public private(set) var diskError: String?
     public var onSave: ((DeckConfig) -> SaveOutcome)?
+    @Published private var pendingExternal: DeckConfig?
+    private var overwriteArmed = false
+
+    public var externalConflict: Bool { pendingExternal != nil }
+
+    public var closePromptDetail: String {
+        let base = "If you don't save, your changes are lost."
+        return externalConflict ? "config.json changed on disk — Save will overwrite it. " + base : base
+    }
 
     private let appRoots: [AppRoot]
     private let environment: IssueEnvironment
@@ -104,10 +113,15 @@ public final class EditorStore: ObservableObject {
     public func redo() { model.redo() }
 
     @discardableResult
-    public func save() -> Bool {
+    public func save(overwriteConfirmed: Bool = false) -> Bool {
         let errors = issues.filter { $0.severity == .error }.count
         guard errors == 0 else {
             status = "Fix \(errors) error(s) before saving"
+            return false
+        }
+        if externalConflict && !overwriteArmed && !overwriteConfirmed {
+            overwriteArmed = true
+            status = "config.json changed on disk. Save again to overwrite it."
             return false
         }
         let outcome = onSave?(model.document) ?? .failed("Saving is not available")
@@ -126,10 +140,24 @@ public final class EditorStore: ObservableObject {
 
     public func externalChange(_ config: DeckConfig) {
         model.externalChange(config)
+        if model.isDirty && config != model.document {
+            pendingExternal = config
+            overwriteArmed = false
+        } else {
+            pendingExternal = nil
+        }
+    }
+
+    public func reloadFromDisk() {
+        guard let config = pendingExternal else { return }
+        model.load(config)
+        pendingExternal = nil
+        status = ""
     }
 
     private func markSaved(_ message: String) {
         model.markSaved()
+        pendingExternal = nil
         diskError = nil
         status = message
     }

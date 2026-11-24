@@ -61,17 +61,26 @@ public enum ConfigSaver {
 }
 
 public struct ConfigWriteGuard: Sendable {
-    private var last: Data?
+    private var last: (data: Data, at: Date)?
+
+    // Watcher echo arrives within the 300 ms debounce.
+    public static let window: TimeInterval = 2
 
     public init() {}
 
-    public mutating func recordWrite(_ data: Data) {
-        last = data
+    public mutating func recordWrite(_ data: Data, at now: Date = Date()) {
+        last = (data, now)
     }
 
-    public mutating func matches(_ data: Data) -> Bool {
-        guard last == data else { return false }
-        last = nil
+    public mutating func matches(_ data: Data, at now: Date = Date()) -> Bool {
+        guard let last, last.data == data, now.timeIntervalSince(last.at) <= Self.window else {
+            return false
+        }
+        self.last = nil
         return true
+    }
+
+    public mutating func reset() {
+        last = nil
     }
 }
