@@ -297,7 +297,7 @@ static void stat_refresh(LiveWidget *lw, const UiTick *t, bool ready)
     }
 
     if (lw->w < 2 && is_rate(lw->metric)) {
-        snprintf(joined, sizeof(joined), "%s", val);
+        snprintf(joined, sizeof(joined), "%s%c", val, unit[0] ? unit[0] : '\0');
     } else {
         join_text(joined, sizeof(joined), val, unit);
     }
@@ -339,7 +339,7 @@ static void volume_refresh(LiveWidget *lw, const UiTick *t, bool ready)
     if (!known) {
         lv_label_set_text(lw->text, "--");
     } else if (!vol.available) {
-        lv_label_set_text(lw->text, "unavailable");
+        lv_label_set_text(lw->text, lw->w >= 2 ? "unavailable" : "n/a");
     } else {
         lv_label_set_text_fmt(lw->text, "%d%%", vol.level);
     }
