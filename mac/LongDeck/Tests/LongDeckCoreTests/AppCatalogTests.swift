@@ -38,6 +38,8 @@ import Testing
         return t
     }
 
+    private func scanSync(_ roots: [AppRoot]) -> [AppEntry] { AppCatalog.scan(roots) }
+
     private func triple(_ e: AppEntry) -> [String] { [e.name, e.path, e.folder] }
 
     @Test func scanFindsAppsOneLevelDeep() throws {
@@ -64,6 +66,15 @@ import Testing
         let both = AppCatalog.scan([AppRoot(url: t, label: "Test"), AppRoot(url: t2, label: "Test2")])
         #expect(!both.contains { $0.path == link.path })
         #expect(both.count == 4)
+    }
+
+    @Test func asyncScanMatchesSync() async throws {
+        let t = try makeFixture()
+        let roots = [AppRoot(url: t, label: "Test")]
+        let sync = scanSync(roots)
+        let off = await AppCatalog.scan(roots)
+        #expect(off == sync)
+        #expect(off.count == 4)
     }
 
     @Test func missingRootIsSkipped() throws {

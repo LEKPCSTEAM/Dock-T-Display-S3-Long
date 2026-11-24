@@ -44,12 +44,14 @@ public struct CanvasGeometry: Equatable, Sendable {
                         minSize: CellSize) -> CellRect {
         var rect = start
         if handle == .right || handle == .bottomRight {
+            rect.col = min(start.col, DeckConfig.gridCols - minSize.w)
             let w = start.w + cellDelta(translation.width, Self.cellWidth)
-            rect.w = clamp(w, minSize.w, DeckConfig.gridCols - start.col)
+            rect.w = clamp(w, minSize.w, DeckConfig.gridCols - rect.col)
         }
         if handle == .bottom || handle == .bottomRight {
+            rect.row = min(start.row, DeckConfig.gridRows - minSize.h)
             let h = start.h + cellDelta(translation.height, Self.cellHeight)
-            rect.h = clamp(h, minSize.h, DeckConfig.gridRows - start.row)
+            rect.h = clamp(h, minSize.h, DeckConfig.gridRows - rect.row)
         }
         return rect
     }

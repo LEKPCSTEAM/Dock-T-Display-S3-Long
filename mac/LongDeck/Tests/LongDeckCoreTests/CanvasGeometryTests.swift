@@ -50,4 +50,15 @@ import Testing
         #expect(g.resized(CellRect(col: 0, row: 0, w: 2, h: 1), handle: .right,
                           by: CGSize(width: -200, height: 0), minSize: two).w == 2)
     }
+
+    @Test func resizedNeverOverflowsGrid() {
+        let g = CanvasGeometry(scale: 1)
+        let two = CellSize(w: 2, h: 2)
+        let right = g.resized(CellRect(col: 7, row: 0, w: 1, h: 1), handle: .right,
+                              by: .zero, minSize: two)
+        #expect(right.col == 6 && right.w == 2)
+        let bottom = g.resized(CellRect(col: 0, row: 1, w: 1, h: 1), handle: .bottom,
+                               by: .zero, minSize: two)
+        #expect(bottom.row == 0 && bottom.h == 2)
+    }
 }

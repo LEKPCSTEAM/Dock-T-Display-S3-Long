@@ -31,6 +31,11 @@ public enum AppCatalog {
                  label: "Home")]
     }
 
+    public static func scan(_ roots: [AppRoot]) async -> [AppEntry] {
+        await Task.detached(priority: .userInitiated) { scan(roots) }.value
+    }
+
+    // Blocking disk walk: call off the main thread, or use the async overload.
     public static func scan(_ roots: [AppRoot]) -> [AppEntry] {
         var seen = Set<String>()
         var found: [AppEntry] = []
