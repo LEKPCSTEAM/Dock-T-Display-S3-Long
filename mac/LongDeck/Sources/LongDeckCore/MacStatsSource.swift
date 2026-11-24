@@ -5,6 +5,7 @@ import IOKit.ps
 
 public final class MacStatsSource: StatsSource {
     public static let temperatureKey = "TCMz"
+    public static let temperatureRange = 10.0...130.0
     private let smc = SMCReader()
 
     public init() {}
@@ -59,7 +60,7 @@ public final class MacStatsSource: StatsSource {
     }
 
     public func temperatureC() -> Double? {
-        guard let value = smc?.readFloat(Self.temperatureKey), (10.0...130.0).contains(value) else { return nil }
+        guard let value = smc?.readFloat(Self.temperatureKey), Self.temperatureRange.contains(value) else { return nil }
         return value
     }
 

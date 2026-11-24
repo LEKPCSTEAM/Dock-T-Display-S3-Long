@@ -6,7 +6,7 @@ import Testing
     @Test func smcReadsCpuTemperature() throws {
         let smc = try #require(SMCReader())
         let value = try #require(smc.readFloat("TCMz"))
-        #expect((20.0...110.0).contains(value))
+        #expect(MacStatsSource.temperatureRange.contains(value))
     }
 
     @Test func cpuTicksAdvance() throws {
@@ -52,7 +52,7 @@ import Testing
         #expect((0.0...100.0).contains(s.cpu))
         #expect((5.0...100.0).contains(s.ram))
         let temp = try #require(s.tempC)
-        #expect((20.0...110.0).contains(temp))
+        #expect(MacStatsSource.temperatureRange.contains(temp))
         #expect(s.battery == -1)
         let object = try #require(try JSONSerialization.jsonObject(with: Data(s.jsonBody.utf8)) as? [String: Any])
         #expect(Set(object.keys) == ["cpu", "ram", "gpu", "temp_c", "net_down_bps", "net_up_bps",
