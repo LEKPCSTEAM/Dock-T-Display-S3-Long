@@ -121,3 +121,40 @@ private func makeHandshake(
     let expected = DeckCrypto.appProof(key: kp, boardNonce: boardNonce, appNonce: appNonce)
     #expect(auth[0]["proof"] as? String == DeckCrypto.hex(expected))
 }
+
+private func pubReceived(challengeFirst: Bool = true) -> (DeckHandshake, Data) {
+    let app = DeckCrypto.newKeyPair()
+    let board = DeckCrypto.newKeyPair()
+    var hs = makeHandshake(pair: (app.priv, app.pub))
+    _ = hs.start()
+    if challengeFirst { _ = hs.receive(challenge(paired: false)) }
+    _ = hs.beginPairing()
+    _ = hs.receive(#"{"t":"pair_pub","pub":"\#(DeckCrypto.hex(board.pub))"}"#)
+    let shared = try! DeckCrypto.shared(priv: app.priv, peerPub: board.pub)
+    return (hs, DeckCrypto.deriveKey(shared: shared, boardPub: board.pub, appPub: app.pub))
+}
+
+@Test func pairOkBeforeSubmitFails() {
+    var (hs, _) = pubReceived()
+    #expect(hs.receive(#"{"t":"pair_ok"}"#) == [.failed("proto")])
+}
+
+@Test func pairOkAfterWrongCodeFails() {
+    var (hs, kp) = pubReceived()
+    let right = DeckCrypto.pairCodeString(key: kp)
+    _ = hs.submitPairCode(right == "000000" ? "000001" : "000000")
+    #expect(hs.receive(#"{"t":"pair_ok"}"#) == [.failed("proto")])
+}
+
+@Test func duplicatePairOkFails() {
+    var (hs, kp) = pubReceived()
+    _ = hs.submitPairCode(DeckCrypto.pairCodeString(key: kp))
+    #expect(hs.receive(#"{"t":"pair_ok"}"#).count == 2)
+    #expect(hs.receive(#"{"t":"pair_ok"}"#) == [.failed("proto")])
+}
+
+@Test func pairOkBeforeChallengeFails() {
+    var (hs, kp) = pubReceived(challengeFirst: false)
+    _ = hs.submitPairCode(DeckCrypto.pairCodeString(key: kp))
+    #expect(hs.receive(#"{"t":"pair_ok"}"#) == [.failed("proto")])
+}

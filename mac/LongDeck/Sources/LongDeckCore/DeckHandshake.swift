@@ -21,6 +21,8 @@ public struct DeckHandshake {
     private var appPriv: Curve25519.KeyAgreement.PrivateKey?
     private var appPub = Data()
     private var pendingKey: Data?
+    private var haveChallenge = false
+    private var confirmSent = false
 
     public init(
         storedKey: @escaping (String) -> Data?,
@@ -63,6 +65,7 @@ public struct DeckHandshake {
             return [.failed("code")]
         }
         let proof = DeckCrypto.confirmProof(key: pending)
+        confirmSent = true
         return [frame(["t": "pair_confirm", "proof": DeckCrypto.hex(proof)])]
     }
 
@@ -72,6 +75,7 @@ public struct DeckHandshake {
         else { return [.failed("malformed")] }
         boardNonce = nonce
         boardId = id
+        haveChallenge = true
         guard let stored = storedKey(id) else { return [] }
         key = stored
         return [authFrame(stored)]
@@ -87,7 +91,8 @@ public struct DeckHandshake {
     }
 
     private mutating func onPairOk() -> [HandshakeOutput] {
-        guard let pending = pendingKey else { return [.failed("malformed")] }
+        guard haveChallenge, confirmSent, let pending = pendingKey else { return [.failed("proto")] }
+        confirmSent = false
         key = pending
         return [.paired(key: pending, boardId: boardId), authFrame(pending)]
     }
