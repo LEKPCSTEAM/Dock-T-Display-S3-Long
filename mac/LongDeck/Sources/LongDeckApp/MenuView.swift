@@ -21,6 +21,7 @@ struct MenuView: View {
             NSApp.activate(ignoringOtherApps: true)
             openWindow(id: "pair")
         }
+        Button("Edit layout…") { model.openEditor() }
         Button("Reload config") { model.reloadConfig() }
         Button("Open config folder") { model.openConfigFolder() }
         if !model.isTrusted {

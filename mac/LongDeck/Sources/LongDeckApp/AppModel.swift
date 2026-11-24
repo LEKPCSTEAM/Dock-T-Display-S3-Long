@@ -48,6 +48,9 @@ final class AppModel: ObservableObject {
     private var fileWatcher: DispatchSourceFileSystemObject?
     private var debounce: Task<Void, Never>?
     private var trustTimer: Timer?
+    private var writeGuard = ConfigWriteGuard()
+    var onConfigApplied: ((DeckConfig) -> Void)?
+    lazy var editorWindow = EditorWindowController(model: self)
 
     @Published private(set) var isTrusted = true
 
@@ -98,7 +101,7 @@ final class AppModel: ObservableObject {
     func reloadConfig() {
         switch ConfigLoadOutcome.read(from: Self.configURL) {
         case .missing:
-            try? SampleConfig.dev.save(to: Self.configURL)
+            if let data = try? SampleConfig.dev.save(to: Self.configURL) { writeGuard.recordWrite(data) }
             apply(SampleConfig.dev)
         case .loaded(let loaded):
             apply(loaded)
@@ -111,6 +114,32 @@ final class AppModel: ObservableObject {
         config = loaded
         configError = nil
         connection?.push(config: loaded)
+        onConfigApplied?(loaded)
+    }
+
+    func openEditor() {
+        editorWindow.show()
+    }
+
+    func editorDocument() -> (config: DeckConfig, onDisk: Bool, diskError: String?) {
+        (config ?? SampleConfig.dev, config != nil && configError == nil, configError)
+    }
+
+    func saveFromEditor(_ config: DeckConfig) -> SaveOutcome {
+        do {
+            let data = try ConfigSaver.prepare(config)
+            try ConfigSaver.write(data, to: Self.configURL)
+            writeGuard.recordWrite(data)
+            apply(config)
+            return connection?.isReady == true ? .sent : .savedOffline
+        } catch {
+            return .failed("\(error)")
+        }
+    }
+
+    private func reloadFromWatcher() {
+        if let data = try? Data(contentsOf: Self.configURL), writeGuard.matches(data) { return }
+        reloadConfig()
     }
 
     private func observeSleep() {
@@ -140,7 +169,7 @@ final class AppModel: ObservableObject {
         let dir = Self.configURL.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: Self.configURL.path) {
-            try? SampleConfig.dev.save(to: Self.configURL)
+            if let data = try? SampleConfig.dev.save(to: Self.configURL) { writeGuard.recordWrite(data) }
         }
         NSWorkspace.shared.activateFileViewerSelecting([Self.configURL])
     }
@@ -268,7 +297,7 @@ final class AppModel: ObservableObject {
         debounce = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
-            self?.reloadConfig()
+            self?.reloadFromWatcher()
             self?.armFileWatcher()
         }
     }
