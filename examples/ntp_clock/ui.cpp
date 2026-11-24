@@ -4,6 +4,7 @@
 #include "ui.h"
 #include "ui_internal.h"
 #include "board.h"
+#include "eez/gen/screens.h"
 
 #define TICK_MS          30
 #define NET_REFRESH_MS   250
@@ -222,6 +223,14 @@ static void tick_cb(lv_timer_t *)
     }
 }
 
+static void mount_page(lv_obj_t *tile, void (*create_screen)(), lv_obj_t **screen, void (*bind)(lv_obj_t *))
+{
+    create_screen();
+    ui_mount_screen(*screen, tile);
+    *screen = NULL;
+    bind(tile);
+}
+
 void ui_init()
 {
     board_set_backlight(0);
@@ -251,10 +260,10 @@ void ui_init()
         lv_obj_set_size(tiles[i], SCREEN_W, SCREEN_H);
         lv_obj_set_pos(tiles[i], i * SCREEN_W, 0);
     }
-    page_clock_create(tiles[PAGE_CLOCK]);
-    page_calendar_create(tiles[PAGE_CALENDAR]);
-    page_focus_create(tiles[PAGE_FOCUS]);
-    page_system_create(tiles[PAGE_SYSTEM]);
+    mount_page(tiles[PAGE_CLOCK], create_screen_clock_page, &objects.clock_page, page_clock_create);
+    mount_page(tiles[PAGE_CALENDAR], create_screen_calendar_page, &objects.calendar_page, page_calendar_create);
+    mount_page(tiles[PAGE_FOCUS], create_screen_focus_page, &objects.focus_page, page_focus_create);
+    mount_page(tiles[PAGE_SYSTEM], create_screen_system_page, &objects.system_page, page_system_create);
 
     indicator_create();
     ui_splash_create();
