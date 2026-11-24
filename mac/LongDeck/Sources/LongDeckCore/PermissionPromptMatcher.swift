@@ -40,6 +40,8 @@ public struct PromptHints: Equatable, Sendable {
     static let fileTitles = ["Edit file", "Create file", "Overwrite file", "Write file"]
     static let bashQuestion = "Do you want to proceed?"
     static let bashAlwaysPrefix = "Yes, and don't ask again for "
+    // Longest command the 624 px overlay label shows untruncated.
+    private static let boardAlwaysMaxBytes = 55
     private static let shellOperators = [";", "|", "&", "`", ">", "<", "$("]
 
     var renderings: [String] { bodies.map { ($0 + detail).joined(separator: "\n") } }
@@ -69,10 +71,12 @@ public struct PromptHints: Equatable, Sendable {
 
     // Always saves a prefix rule; only plain one-line commands keep it visible.
     private static func alwaysAllowed(_ command: String) -> Bool {
-        let line = command.trimmingCharacters(in: .whitespaces)
-        return !line.isEmpty && !shellOperators.contains(where: { line.contains($0) })
-            && !line.contains(where: \.isNewline)
-            && !line.unicodeScalars.contains(where: { [.control, .format].contains($0.properties.generalCategory) })
+        guard let first = command.first, let last = command.last, !first.isWhitespace, !last.isWhitespace,
+              command.utf8.count <= boardAlwaysMaxBytes
+        else { return false }
+        return !shellOperators.contains(where: { command.contains($0) })
+            && !command.contains(where: \.isNewline)
+            && !command.unicodeScalars.contains(where: { [.control, .format].contains($0.properties.generalCategory) })
     }
 
     // Always is never offered for files: its scope is not shown on the board.
@@ -100,8 +104,6 @@ public enum PermissionPromptMatcher {
     private static let interruptWindow = 12
     private static let knownTitles: Set<String> = Set(PromptHints.fileTitles + ["Bash command", "Read file"])
     private static let interruptHint = "esc to interrupt"
-    // ClaudeText.summary keeps 77 bytes before its ellipsis.
-    private static let summaryVisibleBytes = 77
     private static let spinnerGlyphs: Set<Character> = ["·", "✢", "✳", "✶", "✻", "✽", "*"]
     static let cutDialogNotice = "This terminal is too short"
 
@@ -200,7 +202,7 @@ public enum PermissionPromptMatcher {
         }
     }
 
-    // The saved rule's prefix must start the command the deck showed.
+    // The saved rule must be exactly the command the deck showed.
     static func alwaysScopeVerified(_ screen: PromptScreen, _ hints: PromptHints) -> Bool {
         guard screen.alwaysOnOneRow, let label = screen.alwaysLabel, !label.contains("…"),
               hints.bodies.count == 1, hints.bodies[0].count == 1,
@@ -211,8 +213,7 @@ public enum PermissionPromptMatcher {
         guard scopeStart <= sep.lowerBound else { return false }
         let scope = String(label[scopeStart..<sep.lowerBound])
         let command = hints.bodies[0][0]
-        return !scope.isEmpty && !label[sep.upperBound...].isEmpty && scope.utf8.count <= summaryVisibleBytes
-            && (command == scope || command.hasPrefix(scope + " "))
+        return !label[sep.upperBound...].isEmpty && scope == command
     }
 
     // Plain rule or round box top at column 0; true when boxed.
@@ -314,14 +315,15 @@ public enum PermissionPromptMatcher {
 
     private static let wideRanges: [ClosedRange<UInt32>] = [
         0x1100...0x115F, 0x2E80...0x303E, 0x3041...0x33FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xA000...0xA4CF,
-        0xAC00...0xD7A3, 0xF900...0xFAFF, 0xFE30...0xFE4F, 0xFF00...0xFF60, 0xFFE0...0xFFE6,
-        0x1F300...0x1F64F, 0x1F900...0x1F9FF, 0x20000...0x3FFFD,
+        0xAC00...0xD7A3, 0xF900...0xFAFF, 0xFE30...0xFE4F, 0xFF00...0xFF60, 0xFFE0...0xFFE6, 0x20000...0x3FFFD,
     ]
 
-    // East Asian Ambiguous and symbol blocks: terminals disagree between 1 and 2.
+    // Terminals or tmux disagree between 1 and 2 columns here.
     private static let ambiguousRanges: [ClosedRange<UInt32>] = [
-        0x00A1...0x02FF, 0x0391...0x0451, 0x2010...0x2BFF, 0xE000...0xF8FF, 0xFE00...0xFE0F, 0xFFFD...0xFFFD,
-        0x1F100...0x1F1FF, 0xF0000...0x10FFFD,
+        0x00A1...0x02FF, 0x0391...0x0451, 0x2010...0x2BFF, 0x3248...0x324F, 0xA960...0xA97F, 0xE000...0xF8FF,
+        0xFE00...0xFE19, 0xFFFD...0xFFFD, 0x16FE0...0x16FFF, 0x17000...0x18D08, 0x1AFF0...0x1B2FF,
+        0x1F100...0x1F2FF, 0x1F300...0x1F64F, 0x1F680...0x1F6FF, 0x1F900...0x1F9FF, 0x1FA70...0x1FAFF,
+        0xF0000...0x10FFFD,
     ]
 
     private static func columns(_ c: Character) -> (min: Int, max: Int) {
@@ -336,11 +338,9 @@ public enum PermissionPromptMatcher {
         if c.unicodeScalars.contains("\u{FE0F}") || (u.properties.isEmoji && !u.properties.isEmojiPresentation) {
             return (1, 2)
         }
-        if c.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation })
-            || wideRanges.contains(where: { $0.contains(u.value) }) {
-            return (2, 2)
-        }
-        return ambiguousRanges.contains(where: { $0.contains(u.value) }) ? (1, 2) : (1, 1)
+        if c.unicodeScalars.contains(where: { $0.properties.isEmojiPresentation }) { return (2, 2) }
+        if ambiguousRanges.contains(where: { $0.contains(u.value) }) { return (1, 2) }
+        return wideRanges.contains(where: { $0.contains(u.value) }) ? (2, 2) : (1, 1)
     }
 
     private static func option(_ line: String) -> (digit: Character, number: Int, label: String)? {

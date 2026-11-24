@@ -104,9 +104,13 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
     }
 
     @Test func alwaysSendsAlwaysKey() {
-        let tmux = FakeTmux(capture: promptF1)
+        let wholeRule = "   2. Yes, and don't ask again for pio run -e ntp_clock commands in /tmp/work"
+        let tmux = FakeTmux(capture: bashDialog(["pio run -e ntp_clock", "Build firmware"], always: wholeRule))
         #expect(responder(tmux).handle(act(.always), target: target()) == okAck)
         #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "2"]])
+        let prefixRule = FakeTmux(capture: promptF1)
+        #expect(responder(prefixRule).handle(act(.always), target: target()) == refused("unverifiable"))
+        #expect(prefixRule.keys.isEmpty)
     }
 
     @Test func denySendsNoKey() {
@@ -311,7 +315,7 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
         #expect(wrapped.keys.isEmpty)
         #expect(responder(wrapped).handle(act(.approve), target: target()) == okAck)
         let body = ["pio run -e ntp_clock", "Build firmware"]
-        let label = "   2. Yes, and don't ask again for pio run commands in /tmp/work"
+        let label = "   2. Yes, and don't ask again for pio run -e ntp_clock commands in /tmp/work"
         let split = FakeTmux(capture: bashDialog(body, always: label + "\n   /T-Display-S3-Long"))
         #expect(responder(split).handle(act(.always), target: target()) == refused("unverifiable"))
         #expect(split.keys.isEmpty)
@@ -319,15 +323,15 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
         #expect(responder(whole).handle(act(.always), target: target()) == okAck)
     }
 
-    @Test func alwaysScopeMustPrefixTheCommand() {
+    @Test func alwaysScopeMustBeTheWholeCommand() {
         let body = ["pio run -e ntp_clock", "Build firmware"]
         func always(_ label: String) -> ClaudeAck {
             responder(FakeTmux(capture: bashDialog(body, always: "   2. " + label))).handle(act(.always), target: target())
         }
-        #expect(always("Yes, and don't ask again for pio run commands in /tmp/work") == okAck)
-        #expect(always("Yes, and don't ask again for pio commands in /tmp/work") == okAck)
         #expect(always("Yes, and don't ask again for pio run -e ntp_clock commands in /tmp/work") == okAck)
-        for label in ["Yes, and don't ask again for rm commands in /tmp/work",
+        for label in ["Yes, and don't ask again for pio run commands in /tmp/work",
+                      "Yes, and don't ask again for pio commands in /tmp/work",
+                      "Yes, and don't ask again for rm commands in /tmp/work",
                       "Yes, and don't ask again for pio r commands in /tmp/work",
                       "Yes, and don't ask again for pio run commands in /tmp/wo…",
                       "Yes, and don't ask again for pio run",
@@ -335,6 +339,34 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
                       "Yes, and don't ask again for pio run commands in "] {
             #expect(always(label) == refused("unverifiable"), "\(label)")
         }
+    }
+
+    @Test func alwaysRefusedForPaddedCommand() {
+        let rule = "   2. Yes, and don't ask again for rm -rf build commands in /tmp/work"
+        for command in ["  rm -rf build", "rm -rf build ", "\trm -rf build", "rm -rf build\n"] {
+            let tmux = FakeTmux(capture: bashDialog(["rm -rf build", "Clean"], always: rule))
+            #expect(responder(tmux).handle(act(.always), target: target(input: bashInput(command, "Clean")))
+                == refused("unverifiable"), "\(command)")
+            #expect(tmux.keys.isEmpty)
+        }
+        let padded = String(repeating: " ", count: 78) + "rm -rf build"
+        let short = FakeTmux(capture: bashDialog(["rm -rf build", "Clean"], always: "   2. Yes, and don't ask again for rm commands in /tmp/work"))
+        #expect(responder(short).handle(act(.always), target: target(input: bashInput(padded, "Clean"))) == refused("unverifiable"))
+        let clean = FakeTmux(capture: bashDialog(["rm -rf build", "Clean"], always: rule))
+        #expect(responder(clean).handle(act(.always), target: target(input: bashInput("rm -rf build", "Clean"))) == okAck)
+    }
+
+    @Test func alwaysCapsCommandAt55Bytes() {
+        func always(_ command: String) -> ClaudeAck {
+            let rule = "   2. Yes, and don't ask again for \(command) commands in /tmp/work"
+            let tmux = FakeTmux(capture: bashDialog([command, "Run"], always: rule))
+            return responder(tmux).handle(act(.always), target: target(input: bashInput(command, "Run")))
+        }
+        let fits = "echo " + String(repeating: "a", count: 50)
+        #expect(fits.utf8.count == 55)
+        #expect(always(fits) == okAck)
+        #expect(always(fits + "a") == refused("unverifiable"))
+        #expect(always("echo " + String(repeating: "ก", count: 17)) == refused("unverifiable"))
     }
 
     @Test func alwaysRefusedForFileTools() {

@@ -276,6 +276,17 @@ let hk1Hints = hints("Bash", hk1Input)!
         }
     }
 
+    @Test func tmuxWideGapsAreUncertain() throws {
+        for glyph in ["ꥠ", "🈐", "\u{1B001}", "\u{FE10}", "\u{1F900}", "㉈"] {
+            let w = PermissionPromptMatcher.displayWidth(glyph)
+            let pair: [Int] = [w.min, w.max]
+            #expect(pair == [1, 2], "\(glyph)")
+            let s = try screenOf(bashDialog(["echo \(glyph)", "rm"]))
+            #expect(!PermissionPromptMatcher.matches(s, try #require(hints("Bash", bashInput("echo \(glyph)\nrm"))), paneWidth: 11),
+                    "\(glyph)")
+        }
+    }
+
     @Test func displayWidthCountsWideCharacters() {
         func width(_ s: String) -> [Int] {
             let w = PermissionPromptMatcher.displayWidth(s)
