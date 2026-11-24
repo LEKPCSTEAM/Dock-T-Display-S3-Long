@@ -19,6 +19,8 @@ private func stubRender(_ key: KeyConfig) -> Data {
 
 let liveL1 = #"{"hash":"0123456789abcdef","pages":[{"name":"Mac","widgets":[{"col":7,"face":1,"h":1,"id":"k1","long":false,"row":0,"type":"key","w":1},{"col":0,"face":0,"h":1,"id":"cpu","metric":"cpu","row":0,"style":"sparkline","type":"stat","w":2},{"col":2,"face":0,"h":1,"id":"vol","row":0,"type":"volume","w":3},{"col":5,"face":0,"h":1,"id":"clk","row":0,"type":"clock","w":2},{"col":0,"face":0,"h":1,"id":"tmp","metric":"temp","row":1,"style":"number","type":"stat","w":1}]}]}"#
 
+private let liveL2 = #"{"hash":"0123456789abcdef","pages":[{"name":"Claude","widgets":[{"col":0,"face":0,"h":2,"id":"ccs","row":0,"type":"claude_sessions","w":4},{"col":4,"face":0,"h":1,"id":"ccu","row":0,"type":"claude_usage","w":4}]}]}"#
+
 func liveConfig() -> DeckConfig {
     let k1 = KeyConfig(id: "k1", col: 7, row: 0, w: 1, h: 1, label: "K", icon: nil,
                        background: "#222222", action: .shell("true"), longAction: nil)
@@ -61,6 +63,17 @@ func liveConfig() -> DeckConfig {
         let json = built.json.replacingOccurrences(of: built.hash, with: "0123456789abcdef")
         #expect(json == liveL1)
         #expect(Set(built.faces.keys) == [1])
+    }
+
+    @Test func claudeLayoutMatchesSharedExample() {
+        let config = DeckConfig(version: 1, pages: [PageConfig(name: "Claude", keys: [], live: [
+            LiveWidgetConfig(id: "ccs", col: 0, row: 0, w: 4, h: 2, kind: .claudeSessions),
+            LiveWidgetConfig(id: "ccu", col: 4, row: 0, w: 4, h: 1, kind: .claudeUsage),
+        ])])
+        let built = LayoutBuilder.build(config, render: stubRender)
+        let json = built.json.replacingOccurrences(of: built.hash, with: "0123456789abcdef")
+        #expect(json == liveL2)
+        #expect(built.faces.isEmpty)
     }
 
     @Test func liveWidgetsChangeHash() {

@@ -17,6 +17,10 @@ public struct LiveLink: Sendable {
     private var pushing = false
     private var lastVolume: String?
     private var heldVolume: String?
+    private var lastClaude: String?
+    private var heldClaude: String?
+    private var queuedAcks: [String] = []
+    private static let maxQueuedAcks = 8
 
     public init() {}
 
@@ -25,6 +29,9 @@ public struct LiveLink: Sendable {
         pushing = false
         lastVolume = nil
         heldVolume = nil
+        lastClaude = nil
+        heldClaude = nil
+        queuedAcks = []
     }
 
     public mutating func pageChanged(_ index: Int) {
@@ -35,11 +42,39 @@ public struct LiveLink: Sendable {
         pushing = true
     }
 
-    public mutating func pushFinished() -> OutFrame? {
+    public mutating func pushFinished() -> [OutFrame] {
         pushing = false
-        guard let body = heldVolume else { return nil }
-        heldVolume = nil
-        return volumeFrame(body: body)
+        var frames: [OutFrame] = []
+        if let body = heldVolume {
+            heldVolume = nil
+            if let frame = volumeFrame(body: body) { frames.append(frame) }
+        }
+        if let body = heldClaude {
+            heldClaude = nil
+            if let frame = claudeFrame(body: body) { frames.append(frame) }
+        }
+        frames += queuedAcks.map { OutFrame(type: "claude_ack", body: $0) }
+        queuedAcks = []
+        return frames
+    }
+
+    public mutating func claudeFrame(body: String) -> OutFrame? {
+        if pushing {
+            heldClaude = body
+            return nil
+        }
+        guard body != lastClaude else { return nil }
+        lastClaude = body
+        return OutFrame(type: "claude", body: body)
+    }
+
+    public mutating func ackFrame(body: String) -> OutFrame? {
+        if pushing {
+            queuedAcks.append(body)
+            if queuedAcks.count > Self.maxQueuedAcks { queuedAcks.removeFirst() }
+            return nil
+        }
+        return OutFrame(type: "claude_ack", body: body)
     }
 
     public func statsFrame(body: String) -> OutFrame? {

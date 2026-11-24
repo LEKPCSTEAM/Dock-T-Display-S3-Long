@@ -35,6 +35,8 @@ public enum LayoutBuilder {
                     widget["style"] = style.rawValue
                 case .volume: widget["type"] = "volume"
                 case .clock: widget["type"] = "clock"
+                case .claudeSessions: widget["type"] = "claude_sessions"
+                case .claudeUsage: widget["type"] = "claude_usage"
                 }
                 widgets.append(widget)
             }

@@ -260,7 +260,7 @@ final class DeckConnection {
                 }
             }
             guard let self, !Task.isCancelled, !self.closed, self.pushGeneration == generation else { return }
-            if let held = self.link.pushFinished() { self.sendFrame(held) }
+            for held in self.link.pushFinished() { self.sendFrame(held) }
         }
     }
 

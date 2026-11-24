@@ -54,6 +54,11 @@ public enum SampleConfig {
         return DeckConfig(version: 1, pages: [
             PageConfig(name: "Dev", keys: keys),
             PageConfig(name: "Mac", keys: [], live: macLive),
+            PageConfig(name: "Claude", keys: [], live: [
+                LiveWidgetConfig(id: "ccsessions", col: 0, row: 0, w: 4, h: 2, kind: .claudeSessions),
+                LiveWidgetConfig(id: "ccusage", col: 4, row: 0, w: 4, h: 1, kind: .claudeUsage),
+                LiveWidgetConfig(id: "ccclock", col: 4, row: 1, w: 2, h: 1, kind: .clock),
+            ]),
         ])
     }()
 }

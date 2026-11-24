@@ -62,6 +62,7 @@ public enum LiveKind: Equatable, Sendable {
     case stat(StatMetric, StatStyle)
     case volume
     case clock
+    case claudeSessions, claudeUsage
 }
 
 public struct LiveWidgetConfig: Codable, Equatable, Sendable {
@@ -96,6 +97,8 @@ public struct LiveWidgetConfig: Codable, Equatable, Sendable {
                          try c.decode(StatStyle.self, forKey: .style))
         case "volume": kind = .volume
         case "clock": kind = .clock
+        case "claude_sessions": kind = .claudeSessions
+        case "claude_usage": kind = .claudeUsage
         case let other:
             throw DecodingError.dataCorruptedError(
                 forKey: .type, in: c, debugDescription: "unknown live widget type \(other)")
@@ -116,6 +119,8 @@ public struct LiveWidgetConfig: Codable, Equatable, Sendable {
             try c.encode(style, forKey: .style)
         case .volume: try c.encode("volume", forKey: .type)
         case .clock: try c.encode("clock", forKey: .type)
+        case .claudeSessions: try c.encode("claude_sessions", forKey: .type)
+        case .claudeUsage: try c.encode("claude_usage", forKey: .type)
         }
     }
 }
@@ -177,6 +182,9 @@ public struct DeckConfig: Codable, Equatable, Sendable {
             let count = page.keys.count + page.live.count
             guard count <= Self.maxWidgetsPerPage else {
                 throw DeckConfigError.invalid("page \(page.name) has \(count) widgets, max \(Self.maxWidgetsPerPage)")
+            }
+            for l in page.live where l.kind == .claudeSessions && l.w < 2 {
+                throw DeckConfigError.invalid("widget \(l.id): claude_sessions needs at least 2 columns")
             }
             var cells = Set<Int>()
             let frames = page.keys.map { ($0.id, $0.col, $0.row, $0.w, $0.h) }

@@ -172,11 +172,47 @@ private func tempURL() -> URL {
             case .stat(let m, let s): metrics.insert(m); styles.insert(s)
             case .volume: volume = true
             case .clock: clock = true
+            case .claudeSessions, .claudeUsage: break
             }
         }
         #expect(volume && clock)
         #expect(styles == Set(StatStyle.allCases))
         #expect(metrics == Set(StatMetric.allCases).subtracting([.battery]))
+        try SampleConfig.dev.validate()
+    }
+
+    @Test func claudeWidgetJSONIsFlat() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let sessions = LiveWidgetConfig(id: "ccs", col: 0, row: 0, w: 4, h: 2, kind: .claudeSessions)
+        let usage = LiveWidgetConfig(id: "ccu", col: 4, row: 0, w: 4, h: 1, kind: .claudeUsage)
+        let sessionsJSON = String(decoding: try encoder.encode(sessions), as: UTF8.self)
+        let usageJSON = String(decoding: try encoder.encode(usage), as: UTF8.self)
+        #expect(sessionsJSON == #"{"col":0,"h":2,"id":"ccs","row":0,"type":"claude_sessions","w":4}"#)
+        #expect(usageJSON == #"{"col":4,"h":1,"id":"ccu","row":0,"type":"claude_usage","w":4}"#)
+        #expect(try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(sessionsJSON.utf8)) == sessions)
+        #expect(try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(usageJSON.utf8)) == usage)
+    }
+
+    @Test func claudeSessionsNeedsTwoColumns() throws {
+        func config(_ kind: LiveKind) -> DeckConfig {
+            DeckConfig(version: 1, pages: [PageConfig(
+                name: "C", keys: [], live: [LiveWidgetConfig(id: "c", col: 0, row: 0, w: 1, h: 1, kind: kind)])])
+        }
+        #expect(throws: DeckConfigError.invalid("widget c: claude_sessions needs at least 2 columns")) {
+            try config(.claudeSessions).validate()
+        }
+        try config(.claudeUsage).validate()
+    }
+
+    @Test func sampleClaudePage() throws {
+        let page = try #require(SampleConfig.dev.pages.first { $0.name == "Claude" })
+        #expect(page.keys.isEmpty)
+        #expect(page.live == [
+            LiveWidgetConfig(id: "ccsessions", col: 0, row: 0, w: 4, h: 2, kind: .claudeSessions),
+            LiveWidgetConfig(id: "ccusage", col: 4, row: 0, w: 4, h: 1, kind: .claudeUsage),
+            LiveWidgetConfig(id: "ccclock", col: 4, row: 1, w: 2, h: 1, kind: .clock),
+        ])
         try SampleConfig.dev.validate()
     }
 }
