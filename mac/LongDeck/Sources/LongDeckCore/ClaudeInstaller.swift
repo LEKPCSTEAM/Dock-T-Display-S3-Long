@@ -1,0 +1,270 @@
+import Foundation
+
+public struct ClaudeInstallPaths: Sendable {
+    public let settings: URL
+    public let supportDir: URL
+
+    public init(settings: URL, supportDir: URL) {
+        self.settings = settings
+        self.supportDir = supportDir
+    }
+
+    var wrapper: URL { supportDir.appendingPathComponent("statusline.sh") }
+    var stateFile: URL { supportDir.appendingPathComponent("claude-install.json") }
+}
+
+public struct ClaudeInstallState: Codable, Equatable, Sendable {
+    public var token: String
+    public var port: Int
+    public var statusLineCommand: String
+    public var previousStatusLine: String?
+    public var createdEvents: [String]
+    public var createdHooksKey: Bool
+    public var createdSettingsFile: Bool
+    public var backupPath: String?
+    public var installedAt: String
+}
+
+public enum ClaudeInstallError: Error, Equatable {
+    case alreadyInstalled, notInstalled, settingsUnreadable(String), settingsNotObject,
+         wrapperWithoutState, writeFailed(String)
+}
+
+public enum ClaudeInstaller {
+    public static let port = 47821
+    public static let hookEvents = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
+                                    "PermissionRequest", "Notification", "Stop", "SessionEnd"]
+
+    private static let urlPrefix = "http://127.0.0.1:\(port)/"
+
+    public static func loadState(_ paths: ClaudeInstallPaths) -> ClaudeInstallState? {
+        guard let data = try? Data(contentsOf: paths.stateFile) else { return nil }
+        return try? JSONDecoder().decode(ClaudeInstallState.self, from: data)
+    }
+
+    @discardableResult
+    public static func install(_ paths: ClaudeInstallPaths, token: String, now: Date) throws -> ClaudeInstallState {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: paths.stateFile.path) { throw ClaudeInstallError.alreadyInstalled }
+
+        let settingsURL = paths.settings.resolvingSymlinksInPath()
+        let existed = fm.fileExists(atPath: settingsURL.path)
+        var original: Data?
+        var root = JSONValue.object([])
+        if existed {
+            let data: Data
+            do { data = try Data(contentsOf: settingsURL) } catch {
+                throw ClaudeInstallError.settingsUnreadable(error.localizedDescription)
+            }
+            do { root = try JSONText.parse(data) } catch {
+                throw ClaudeInstallError.settingsUnreadable("\(error)")
+            }
+            guard case .object = root else { throw ClaudeInstallError.settingsNotObject }
+            original = data
+        }
+
+        let wrapperCommand = StatusLineWrapper.shellQuote(paths.wrapper.path)
+        if root["statusLine"]?["command"] == .string(wrapperCommand) {
+            throw ClaudeInstallError.wrapperWithoutState
+        }
+
+        var backupPath: String?
+        if let original { backupPath = try writeBackup(original, of: settingsURL, now: now).path }
+
+        var hooks: JSONValue
+        var createdHooksKey = false
+        switch root["hooks"] {
+        case nil:
+            hooks = .object([])
+            createdHooksKey = true
+        case .object?: hooks = root["hooks"]!
+        default: throw ClaudeInstallError.settingsUnreadable("hooks is not an object")
+        }
+        hooks = try stripLongDeckGroups(hooks)
+
+        var createdEvents: [String] = []
+        let group = try hookGroup(token: token)
+        for name in hookEvents {
+            var arr: [JSONValue]
+            switch hooks[name] {
+            case nil:
+                arr = []
+                createdEvents.append(name)
+            case .array(let a)?: arr = a
+            default: throw ClaudeInstallError.settingsUnreadable("hooks.\(name) is not an array")
+            }
+            arr.append(group)
+            hooks = hooks.setting(name, .array(arr))
+        }
+        root = root.setting("hooks", hooks)
+
+        var previousStatusLine: String?
+        var previousCommand: String?
+        if let sl = root["statusLine"] {
+            previousStatusLine = JSONText.compact(sl)
+            if case .string(let c)? = sl["command"] { previousCommand = c }
+        }
+        if case .object? = root["statusLine"] {
+            root = root.setting("statusLine", root["statusLine"]!.setting("command", .string(wrapperCommand)))
+        } else {
+            root = root.setting("statusLine", .object([
+                JSONMember(key: "type", value: .string("command")),
+                JSONMember(key: "command", value: .string(wrapperCommand)),
+                JSONMember(key: "padding", value: .number("0")),
+            ]))
+        }
+
+        let script = StatusLineWrapper.script(previousCommand: previousCommand, url: urlPrefix + "statusline", token: token)
+        do {
+            try fm.createDirectory(at: paths.supportDir, withIntermediateDirectories: true)
+            try writeFile(Data(script.utf8), to: paths.wrapper, mode: 0o700)
+        } catch { throw ClaudeInstallError.writeFailed("\(error)") }
+
+        let mode = existed ? try fileMode(settingsURL) : 0o600
+        try writeSettings(root, to: settingsURL, mode: mode)
+
+        let state = ClaudeInstallState(
+            token: token, port: port, statusLineCommand: wrapperCommand,
+            previousStatusLine: previousStatusLine, createdEvents: createdEvents,
+            createdHooksKey: createdHooksKey, createdSettingsFile: !existed,
+            backupPath: backupPath, installedAt: isoString(now))
+        do {
+            try writeFile(try encoder().encode(state), to: paths.stateFile, mode: 0o600)
+        } catch { throw ClaudeInstallError.writeFailed("\(error)") }
+        return state
+    }
+
+    public static func uninstall(_ paths: ClaudeInstallPaths, now: Date) throws {
+        let fm = FileManager.default
+        guard let state = loadState(paths) else { throw ClaudeInstallError.notInstalled }
+
+        let settingsURL = paths.settings.resolvingSymlinksInPath()
+        if fm.fileExists(atPath: settingsURL.path) {
+            let data: Data
+            do { data = try Data(contentsOf: settingsURL) } catch {
+                throw ClaudeInstallError.settingsUnreadable(error.localizedDescription)
+            }
+            var root: JSONValue
+            do { root = try JSONText.parse(data) } catch {
+                throw ClaudeInstallError.settingsUnreadable("\(error)")
+            }
+            guard case .object = root else { throw ClaudeInstallError.settingsNotObject }
+
+            _ = try writeBackup(data, of: settingsURL, now: now)
+
+            if let hooks = root["hooks"], case .object(let members) = hooks {
+                var stripped = try stripLongDeckGroups(hooks)
+                for m in members {
+                    if case .array(let a)? = stripped[m.key], a.isEmpty, state.createdEvents.contains(m.key) {
+                        stripped = stripped.removing(m.key)
+                    }
+                }
+                if case .object(let left) = stripped, left.isEmpty, state.createdHooksKey {
+                    root = root.removing("hooks")
+                } else {
+                    root = root.setting("hooks", stripped)
+                }
+            }
+
+            if root["statusLine"]?["command"] == .string(state.statusLineCommand) {
+                if let prev = state.previousStatusLine {
+                    do { root = root.setting("statusLine", try JSONText.parse(Data(prev.utf8))) } catch {
+                        throw ClaudeInstallError.settingsUnreadable("\(error)")
+                    }
+                } else {
+                    root = root.removing("statusLine")
+                }
+            }
+
+            if state.createdSettingsFile, root == .object([]) {
+                do { try fm.removeItem(at: settingsURL) } catch { throw ClaudeInstallError.writeFailed("\(error)") }
+            } else {
+                try writeSettings(root, to: settingsURL, mode: try fileMode(settingsURL))
+            }
+        }
+
+        try? fm.removeItem(at: paths.wrapper)
+        do { try fm.removeItem(at: paths.stateFile) } catch { throw ClaudeInstallError.writeFailed("\(error)") }
+    }
+
+    private static func hookGroup(token: String) throws -> JSONValue {
+        let text = "{\"hooks\":[{\"type\":\"http\",\"url\":\(JSONText.compact(.string(urlPrefix + "hook"))),\"headers\":{\"X-LongDeck-Token\":\(JSONText.compact(.string(token))),\"X-Tmux-Pane\":\"$TMUX_PANE\"},\"allowedEnvVars\":[\"TMUX_PANE\"],\"timeout\":2,\"onFailure\":\"continue\"}]}"
+        return try JSONText.parse(Data(text.utf8))
+    }
+
+    private static func isLongDeckGroup(_ g: JSONValue) -> Bool {
+        guard case .array(let hs)? = g["hooks"] else { return false }
+        return hs.contains { h in
+            guard h["type"] == .string("http"), case .string(let u)? = h["url"], u.hasPrefix(urlPrefix),
+                  case .object? = h["headers"], h["headers"]?["X-LongDeck-Token"] != nil else { return false }
+            return true
+        }
+    }
+
+    private static func stripLongDeckGroups(_ hooks: JSONValue) throws -> JSONValue {
+        guard case .object(let members) = hooks else { return hooks }
+        return .object(members.map { m in
+            guard case .array(let a) = m.value else { return m }
+            return JSONMember(key: m.key, value: .array(a.filter { !isLongDeckGroup($0) }))
+        })
+    }
+
+    private static func writeBackup(_ data: Data, of settings: URL, now: Date) throws -> URL {
+        let fm = FileManager.default
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        let base = settings.path + ".longdeck-" + f.string(from: now)
+        var url = URL(fileURLWithPath: base + ".bak")
+        var n = 2
+        while fm.fileExists(atPath: url.path) {
+            url = URL(fileURLWithPath: "\(base)-\(n).bak")
+            n += 1
+        }
+        do { try writeFile(data, to: url, mode: 0o600) } catch { throw ClaudeInstallError.writeFailed("\(error)") }
+        return url
+    }
+
+    private static func writeFile(_ data: Data, to url: URL, mode: Int) throws {
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: url.path)
+    }
+
+    private static func fileMode(_ url: URL) throws -> Int {
+        do {
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            return (attrs[.posixPermissions] as? Int) ?? 0o600
+        } catch { throw ClaudeInstallError.writeFailed("\(error)") }
+    }
+
+    private static func writeSettings(_ root: JSONValue, to url: URL, mode: Int) throws {
+        let tmp = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(url.lastPathComponent).longdeck-\(UUID().uuidString).tmp")
+        do {
+            try Data(JSONText.pretty(root).utf8).write(to: tmp)
+            try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: tmp.path)
+        } catch {
+            try? FileManager.default.removeItem(at: tmp)
+            throw ClaudeInstallError.writeFailed("\(error)")
+        }
+        if rename(tmp.path, url.path) != 0 {
+            let msg = String(cString: strerror(errno))
+            try? FileManager.default.removeItem(at: tmp)
+            throw ClaudeInstallError.writeFailed(msg)
+        }
+    }
+
+    private static func encoder() -> JSONEncoder {
+        let e = JSONEncoder()
+        e.outputFormatting = [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes]
+        return e
+    }
+
+    private static func isoString(_ date: Date) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: date)
+    }
+}
