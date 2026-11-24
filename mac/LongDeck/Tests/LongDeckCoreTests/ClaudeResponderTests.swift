@@ -1,0 +1,300 @@
+import Foundation
+import Testing
+@testable import LongDeckCore
+
+final class FakeTmux: TmuxRunner, @unchecked Sendable {
+    var calls: [[String]] = []
+    var outputs: [String: String] = ["display-message": "2.1.331\tT-Display-S3-Long"]
+    var failing: Set<String> = []
+
+    init(capture: String? = nil) {
+        if let capture { outputs["capture-pane"] = capture }
+    }
+
+    func run(_ args: [String]) throws -> String {
+        calls.append(args)
+        if failing.contains(args[0]) { throw TmuxError.failed(1, "boom") }
+        return outputs[args[0]] ?? ""
+    }
+
+    var keys: [[String]] { calls.filter { $0.first == "send-keys" } }
+}
+
+private final class Activations: @unchecked Sendable {
+    var ttys: [String?] = []
+    var frontCalls = 0
+}
+
+private let paneFormat = "#{pane_current_command}\t#{session_name}"
+private let clientFormat = "#{client_tty}\t#{client_session}\t#{client_activity}"
+private let displayCall = ["display-message", "-p", "-t", "%37", paneFormat]
+private let captureCall = ["capture-pane", "-p", "-t", "%37"]
+private let a1 = #"{"action":"approve","request":"a3f9-1","session":"5f0c6c1e-2b7a-4c55-9a51-0d7f3b1c9e42"}"#
+private let a2 = #"{"action":"focus","request":"","session":"9b2d7e00-1111-4222-8333-444455556666"}"#
+private let workingScreen = promptScreen(["⏺ Building the firmware", "", "✻ Building… (12s · esc to interrupt)"])
+
+private func responder(_ tmux: FakeTmux, front: String? = nil, log: Activations = Activations()) -> ClaudeResponder {
+    ClaudeResponder(runner: tmux, frontTTY: {
+        log.frontCalls += 1
+        return front
+    }, activateTerminal: { log.ttys.append($0) })
+}
+
+private func target(pane: String? = "%37", pending: String? = "a3f9-1", tool: String? = "Bash",
+                    input: String? = hk1Input) -> ClaudeTarget {
+    ClaudeTarget(pane: pane, pendingRequest: pending, toolName: tool, toolInputJSON: input, cwd: claudeCwd)
+}
+
+private func act(_ action: ClaudeActionKind, _ request: String = "a3f9-1") -> ClaudeActionRequest {
+    ClaudeActionRequest(session: claudeA, request: request, action: action)
+}
+
+private func refused(_ reason: String, _ request: String = "a3f9-1") -> ClaudeAck {
+    ClaudeAck(request: request, ok: false, reason: reason)
+}
+
+private let okAck = ClaudeAck(request: "a3f9-1", ok: true, reason: "")
+
+private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxClient {
+    TmuxClient(tty: tty, session: session, activity: activity)
+}
+
+@Suite struct ClaudeResponderTests {
+    @Test func actionParseA1A2() {
+        #expect(ClaudeActionRequest.parse(a1) == ClaudeActionRequest(session: claudeA, request: "a3f9-1", action: .approve))
+        #expect(ClaudeActionRequest.parse(a2) == ClaudeActionRequest(session: claudeB, request: "", action: .focus))
+    }
+
+    @Test func actionParseRejects() {
+        let long = String(repeating: "s", count: 65)
+        for body in [
+            #"{"action":"maybe","request":"a3f9-1","session":"s"}"#,
+            #"{"action":"focus","request":""}"#,
+            #"{"action":"focus","request":"","session":""}"#,
+            #"{"action":"focus","request":"","session":"\#(long)"}"#,
+            #"{"action":"approve","request":"","session":"s"}"#,
+            #"{"action":"deny","session":"s"}"#,
+            #"{"action":"interrupt","request":7,"session":"s"}"#,
+            #"{"action":7,"request":"","session":"s"}"#,
+            #"["approve"]"#,
+            "not json",
+        ] {
+            #expect(ClaudeActionRequest.parse(body) == nil, "\(body)")
+        }
+        let max = String(repeating: "s", count: 64)
+        #expect(ClaudeActionRequest.parse(#"{"action":"interrupt","request":"","session":"\#(max)"}"#)?.session == max)
+    }
+
+    @Test func ackBodiesMatchK1K2() {
+        #expect(refused("mismatch").body == #"{"ok":false,"reason":"mismatch","request":"a3f9-1"}"#)
+        #expect(okAck.body == #"{"ok":true,"reason":"","request":"a3f9-1"}"#)
+    }
+
+    @Test func approveSendsYesKey() {
+        let tmux = FakeTmux(capture: promptF1)
+        #expect(responder(tmux).handle(act(.approve), target: target()) == okAck)
+        #expect(tmux.calls == [displayCall, captureCall, ["send-keys", "-t", "%37", "-l", "1"]])
+    }
+
+    @Test func alwaysSendsAlwaysKey() {
+        let tmux = FakeTmux(capture: promptF1)
+        #expect(responder(tmux).handle(act(.always), target: target()) == okAck)
+        #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "2"]])
+    }
+
+    @Test func denySendsNoKey() {
+        let tmux = FakeTmux(capture: promptF1)
+        #expect(responder(tmux).handle(act(.deny), target: target()) == okAck)
+        #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "3"]])
+    }
+
+    @Test func noFirstVariantDenySendsOne() {
+        let tmux = FakeTmux(capture: promptF8)
+        #expect(responder(tmux).handle(act(.deny), target: target(input: curlInput)) == okAck)
+        #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "1"]])
+    }
+
+    @Test func alwaysWithoutRowRefused() {
+        let tmux = FakeTmux(capture: promptF2)
+        #expect(responder(tmux).handle(act(.always), target: target()) == refused("no_always"))
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func staleRequestRefusedWithoutCapture() {
+        let tmux = FakeTmux(capture: promptF1)
+        let r = responder(tmux)
+        #expect(r.handle(act(.approve, "a3f9-0"), target: target()) == refused("stale", "a3f9-0"))
+        #expect(r.handle(act(.deny), target: target(pending: nil)) == refused("stale"))
+        #expect(r.handle(act(.always, ""), target: target(pending: "")) == refused("stale", ""))
+        #expect(tmux.calls.isEmpty)
+    }
+
+    @Test func notClaudePaneRefused() {
+        let tmux = FakeTmux(capture: promptF1)
+        tmux.outputs["display-message"] = "zsh\tx"
+        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("not_claude"))
+        #expect(responder(tmux).handle(act(.interrupt, ""), target: target()) == refused("not_claude", ""))
+        #expect(tmux.calls.allSatisfy { $0.first == "display-message" })
+        for command in ["2.1", "2.1.331.4", "v2.1.331", "2.1.x", "claude-code", ""] {
+            tmux.outputs["display-message"] = "\(command)\tT-Display-S3-Long"
+            #expect(responder(tmux).handle(act(.approve), target: target()) == refused("not_claude"), "\(command)")
+        }
+        tmux.outputs["display-message"] = "claude\tT-Display-S3-Long\n"
+        #expect(responder(tmux).handle(act(.approve), target: target()) == okAck)
+    }
+
+    @Test func noPaneRefused() {
+        let tmux = FakeTmux(capture: promptF1)
+        #expect(responder(tmux).handle(act(.approve), target: target(pane: nil)) == refused("no_pane"))
+        for pane in ["37", "%", "%3a", "%37 ", "-t", "%37;ls", "%1234567890123"] {
+            #expect(responder(tmux).handle(act(.focus, ""), target: target(pane: pane)) == refused("no_pane", ""), "\(pane)")
+        }
+        #expect(responder(tmux).promptVisible(pane: "%3a") == false)
+        #expect(tmux.calls.isEmpty)
+    }
+
+    @Test func unknownSessionRefused() {
+        let tmux = FakeTmux(capture: promptF1)
+        #expect(responder(tmux).handle(act(.approve), target: nil) == refused("unknown_session"))
+        #expect(responder(tmux).handle(act(.focus, ""), target: nil) == refused("unknown_session", ""))
+        #expect(tmux.calls.isEmpty)
+    }
+
+    @Test func unverifiableToolRefused() {
+        let tmux = FakeTmux(capture: promptF1)
+        #expect(responder(tmux).handle(act(.approve), target: target(tool: nil)) == refused("unverifiable"))
+        #expect(responder(tmux).handle(act(.approve), target: target(input: #"{"command":""}"#)) == refused("unverifiable"))
+        #expect(!tmux.calls.contains { $0.first == "capture-pane" })
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func mismatchRefused() {
+        let tmux = FakeTmux(capture: promptF6)
+        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("mismatch"))
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func otherCommandBelowHistoryRefused() {
+        let tmux = FakeTmux(capture: promptAfterOtherCommand)
+        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("mismatch"))
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func noPromptRefused() {
+        let tmux = FakeTmux(capture: promptF5)
+        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("no_prompt"))
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func cutPromptRefused() {
+        let tmux = FakeTmux(capture: promptF4)
+        #expect(responder(tmux).handle(act(.deny), target: target()) == refused("no_prompt"))
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func tmuxFailureRefused() {
+        let tmux = FakeTmux(capture: promptF1)
+        tmux.failing = ["capture-pane"]
+        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"))
+        #expect(tmux.keys.isEmpty)
+        tmux.failing = ["display-message"]
+        #expect(responder(tmux).handle(act(.focus, ""), target: target()) == refused("tmux", ""))
+        tmux.failing = ["send-keys"]
+        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"))
+        tmux.outputs["display-message"] = "2.1.331 no tab"
+        tmux.failing = []
+        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"))
+    }
+
+    @Test func interruptNeedsWorkingScreen() {
+        let tmux = FakeTmux(capture: workingScreen)
+        #expect(responder(tmux).handle(act(.interrupt, ""), target: target(pending: nil))
+            == ClaudeAck(request: "", ok: true, reason: ""))
+        #expect(tmux.calls == [displayCall, captureCall, ["send-keys", "-t", "%37", "Escape"]])
+
+        let modeLine = "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt"
+        for screen in [promptF5, promptF1, promptF1 + modeLine + "\n", promptF4 + modeLine + "\n"] {
+            let idle = FakeTmux(capture: screen)
+            #expect(responder(idle).handle(act(.interrupt, ""), target: target()) == refused("not_working", ""))
+            #expect(idle.keys.isEmpty)
+        }
+
+        let old = FakeTmux(capture: promptScreen(["✻ Building… (12s · esc to interrupt)"] + Array(repeating: "out", count: 12)))
+        #expect(responder(old).handle(act(.interrupt, ""), target: target()) == refused("not_working", ""))
+    }
+
+    @Test func focusSwitchesChosenClient() {
+        let tmux = FakeTmux()
+        tmux.outputs["list-clients"] = "/dev/ttys028\tcaltera\t100\n/dev/ttys011\thome\t300\n/dev/ttys031\tq-calling\t200\n"
+        let log = Activations()
+        let ack = responder(tmux, front: "/dev/ttys011", log: log).handle(act(.focus, ""), target: target(pending: nil))
+        #expect(ack == ClaudeAck(request: "", ok: true, reason: ""))
+        #expect(tmux.calls == [
+            displayCall,
+            ["list-clients", "-F", clientFormat],
+            ["switch-client", "-c", "/dev/ttys011", "-t", "%37"],
+            ["select-window", "-t", "%37"],
+            ["select-pane", "-t", "%37"],
+        ])
+        #expect(log.ttys == ["/dev/ttys011"])
+    }
+
+    @Test func focusSkipsSwitchWhenClientOnSession() {
+        let tmux = FakeTmux()
+        tmux.outputs["list-clients"] = "/dev/ttys028\tcaltera\t900\n/dev/ttys040\tT-Display-S3-Long\t50\n"
+        let log = Activations()
+        let ack = responder(tmux, front: "/dev/ttys028", log: log).handle(act(.focus, ""), target: target())
+        #expect(ack.ok)
+        #expect(!tmux.calls.contains { $0.first == "switch-client" })
+        #expect(tmux.calls.last == ["select-pane", "-t", "%37"])
+        #expect(log.ttys == ["/dev/ttys040"])
+        #expect(log.frontCalls == 0)
+    }
+
+    @Test func focusWithoutClientRefused() {
+        let tmux = FakeTmux()
+        tmux.outputs["list-clients"] = "not-a-tty\tcaltera\t1\n/dev/tty s1\tx\t2\n"
+        let log = Activations()
+        #expect(responder(tmux, log: log).handle(act(.focus, ""), target: target()) == refused("no_client", ""))
+        #expect(tmux.calls.count == 2)
+        #expect(log.ttys.isEmpty)
+    }
+
+    @Test func chooseClientRules() {
+        let a = client("/dev/ttys001", "home", 100)
+        let b = client("/dev/ttys002", "work", 50)
+        let c = client("/dev/ttys003", "work", 70)
+        let d = client("/dev/ttys004", "other", 300)
+        #expect(TmuxFocus.chooseClient([a, b, c, d], paneSession: "work", frontTTY: a.tty) == c)
+        #expect(TmuxFocus.chooseClient([a, d], paneSession: "work", frontTTY: a.tty) == a)
+        #expect(TmuxFocus.chooseClient([a, d], paneSession: "work", frontTTY: "/dev/ttys999") == d)
+        #expect(TmuxFocus.chooseClient([a, d], paneSession: "work", frontTTY: nil) == d)
+        #expect(TmuxFocus.chooseClient([], paneSession: "work", frontTTY: a.tty) == nil)
+    }
+
+    @Test func neverSendsKeysWithoutMatchingCapture() {
+        let fixtures = [("F2", promptF2), ("F3", promptF3), ("F4", promptF4), ("F5", promptF5), ("F6", promptF6),
+                        ("F7", promptF7), ("F8", promptF8), ("F9", promptF9), ("F10", promptF10)]
+        var sent: [String] = []
+        for (name, screen) in fixtures {
+            let tmux = FakeTmux(capture: screen)
+            let ack = responder(tmux).handle(act(.approve), target: target())
+            if !tmux.keys.isEmpty {
+                sent.append(name)
+                #expect(ack.ok)
+            } else {
+                #expect(!ack.ok)
+            }
+        }
+        #expect(sent == ["F2", "F9"])
+    }
+
+    @Test func promptVisibleUsesParse() {
+        #expect(responder(FakeTmux(capture: promptF1)).promptVisible(pane: "%37"))
+        #expect(!responder(FakeTmux(capture: promptF5)).promptVisible(pane: "%37"))
+        let broken = FakeTmux(capture: promptF1)
+        broken.failing = ["capture-pane"]
+        #expect(!responder(broken).promptVisible(pane: "%37"))
+        #expect(broken.calls == [captureCall])
+    }
+}
