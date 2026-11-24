@@ -88,12 +88,78 @@ import Testing
         let a = Data("A".utf8)
         let b = Data("B".utf8)
         var guardRecord = ConfigWriteGuard()
-        #expect(!guardRecord.matches(a))
+        let fresh = guardRecord.matches(a)
         guardRecord.recordWrite(a)
-        #expect(guardRecord.matches(a))
-        #expect(guardRecord.matches(a))
-        #expect(!guardRecord.matches(b))
+        let other = guardRecord.matches(b)
+        let own = guardRecord.matches(a)
+        let again = guardRecord.matches(a)
         guardRecord.recordWrite(b)
-        #expect(!guardRecord.matches(a))
+        guardRecord.recordWrite(a)
+        let replaced = guardRecord.matches(b)
+        #expect(!fresh && !other && own && !again && !replaced)
+    }
+
+    @Test func externalRevertToSavedBytesIsNotIgnored() {
+        let a = Data("A".utf8)
+        let b = Data("B".utf8)
+        var guardRecord = ConfigWriteGuard()
+        guardRecord.recordWrite(a)
+        let ownEcho = guardRecord.matches(a)
+        let externalEdit = guardRecord.matches(b)
+        let externalRevert = guardRecord.matches(a)
+        #expect(ownEcho && !externalEdit && !externalRevert)
+    }
+
+    private func mode(_ url: URL) throws -> Int {
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        return (attrs[.posixPermissions] as? NSNumber)?.intValue ?? -1
+    }
+
+    @Test func existingModeIsPreserved() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("config.json")
+        try ConfigSaver.write(Data("one".utf8), to: url)
+        try FileManager.default.setAttributes([.posixPermissions: 0o640], ofItemAtPath: url.path)
+        try ConfigSaver.write(Data("two".utf8), to: url)
+        #expect(try mode(url) == 0o640)
+    }
+
+    @Test func newFileGets0644() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("x/config.json")
+        try ConfigSaver.write(Data("one".utf8), to: url)
+        #expect(try mode(url) == 0o644)
+    }
+
+    @Test func symlinkIsKeptAndTargetUpdated() throws {
+        let root = tempDir()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fm = FileManager.default
+        try fm.createDirectory(at: root.appendingPathComponent("real"), withIntermediateDirectories: true)
+        let target = root.appendingPathComponent("real/config.json")
+        try Data("one".utf8).write(to: target)
+        let link = root.appendingPathComponent("config.json")
+        try fm.createSymbolicLink(at: link, withDestinationURL: target)
+        try ConfigSaver.write(Data("two".utf8), to: link)
+        #expect((try? fm.destinationOfSymbolicLink(atPath: link.path)) != nil)
+        #expect(try Data(contentsOf: target) == Data("two".utf8))
+    }
+
+    @Test func failureLeavesOldFileIntact() throws {
+        let root = tempDir()
+        let fm = FileManager.default
+        defer {
+            try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+            try? fm.removeItem(at: root)
+        }
+        let url = root.appendingPathComponent("config.json")
+        try ConfigSaver.write(Data("old".utf8), to: url)
+        try fm.setAttributes([.posixPermissions: 0o555], ofItemAtPath: root.path)
+        #expect(throws: (any Error).self) { try ConfigSaver.write(Data("new".utf8), to: url) }
+        try fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: root.path)
+        #expect(try Data(contentsOf: url) == Data("old".utf8))
+        #expect(try fm.contentsOfDirectory(atPath: root.path) == ["config.json"])
     }
 }

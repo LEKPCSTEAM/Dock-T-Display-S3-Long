@@ -35,9 +35,28 @@ public enum ConfigSaver {
     }
 
     public static func write(_ data: Data, to url: URL) throws {
-        try FileManager.default.createDirectory(
-            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try data.write(to: url, options: .atomic)
+        let fm = FileManager.default
+        let target = url.resolvingSymlinksInPath()
+        let dir = target.deletingLastPathComponent()
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let oldMode = (try? fm.attributesOfItem(atPath: target.path))?[.posixPermissions]
+        let temp = dir.appendingPathComponent(".\(target.lastPathComponent).\(UUID().uuidString).tmp")
+        do {
+            guard fm.createFile(atPath: temp.path, contents: nil, attributes: [.posixPermissions: 0o600]) else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let handle = try FileHandle(forWritingTo: temp)
+            defer { try? handle.close() }
+            try handle.write(contentsOf: data)
+            try handle.synchronize()
+            try fm.setAttributes([.posixPermissions: oldMode ?? 0o644], ofItemAtPath: temp.path)
+            guard rename(temp.path, target.path) == 0 else {
+                throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            }
+        } catch {
+            try? fm.removeItem(at: temp)
+            throw error
+        }
     }
 }
 
@@ -50,7 +69,9 @@ public struct ConfigWriteGuard: Sendable {
         last = data
     }
 
-    public func matches(_ data: Data) -> Bool {
-        last == data
+    public mutating func matches(_ data: Data) -> Bool {
+        guard last == data else { return false }
+        last = nil
+        return true
     }
 }
