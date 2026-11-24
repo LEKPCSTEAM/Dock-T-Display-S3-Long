@@ -64,6 +64,30 @@ import Testing
         try snap(view, CGSize(width: 420, height: 480), "app-picker")
     }
 
+    @Test func choosersOpenedDuringScanAllGetApps() async throws {
+        let original = AppChooserState.scanner
+        defer {
+            AppChooserState.scanner = original
+            AppChooserState.resetScan()
+        }
+        AppChooserState.resetScan()
+        let found = [calculator]
+        AppChooserState.scanner = {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            return found
+        }
+        let first = AppChooserState()
+        let second = AppChooserState()
+        first.open()
+        second.open()
+        #expect(first.apps.isEmpty && second.apps.isEmpty)
+        for _ in 0..<100 where first.apps.isEmpty || second.apps.isEmpty {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        #expect(first.apps == found)
+        #expect(second.apps == found)
+    }
+
     @Test func hotkeyRecorderStates() throws {
         let view = VStack(alignment: .leading, spacing: 12) {
             HotkeyRecorderView(keyCode: 21, modifiers: [.command, .shift]) { _ in }
