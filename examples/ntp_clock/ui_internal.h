@@ -4,6 +4,7 @@
 #include "lvgl.h"
 #include "fonts.h"
 #include "app_state.h"
+#include "deck_layout.h"
 
 #define SCREEN_W 640
 #define SCREEN_H 180
@@ -70,7 +71,13 @@ void page_focus_update(const UiTick *t);
 void page_system_create(lv_obj_t *tile);
 void page_system_update(const UiTick *t);
 
+// Deck tiles sit at columns PAGE_COUNT + i; ui.cpp owns the tileview.
+void       ui_set_deck_pages(uint8_t n);
+lv_obj_t  *ui_deck_tile(uint8_t i);
+void       page_deck_update(const UiTick *t);
+
 // Full-screen overlays on lv_layer_top(), driven from the ui.cpp tick.
+void ui_pair_update(const UiTick *t);
 void ui_portal_update(const UiTick *t);
 void ui_splash_create();
 bool ui_splash_update(const UiTick *t);       // false once the splash has closed

@@ -20,9 +20,12 @@
 #define FLASH_MAX_OPA    150
 
 static lv_obj_t *tv;
-static lv_obj_t *tiles[PAGE_COUNT];
+#define TILE_MAX (PAGE_COUNT + DECK_MAX_PAGES)
+
+static lv_obj_t *tiles[TILE_MAX];
 static lv_obj_t *indicator;
-static lv_obj_t *dots[PAGE_COUNT];
+static lv_obj_t *dots[TILE_MAX];
+static uint8_t   deck_pages;
 static lv_obj_t *toast;
 static lv_obj_t *flash;
 
@@ -46,7 +49,7 @@ static bool          cfg_ok;
 static int current_page()
 {
     lv_obj_t *act = lv_tileview_get_tile_act(tv);
-    for (int i = 0; i < PAGE_COUNT; i++) {
+    for (int i = 0; i < PAGE_COUNT + deck_pages; i++) {
         if (tiles[i] == act) {
             return i;
         }
@@ -73,7 +76,7 @@ static void indicator_done_cb(lv_anim_t *a)
 
 static void indicator_show(int page, lv_color_t accent)
 {
-    for (int i = 0; i < PAGE_COUNT; i++) {
+    for (int i = 0; i < PAGE_COUNT + deck_pages; i++) {
         bool on = i == page;
         lv_obj_set_width(dots[i], on ? 20 : 8);
         lv_obj_set_style_bg_color(dots[i], on ? accent : COLOR_TEXT_DIM, 0);
@@ -94,6 +97,17 @@ static void indicator_show(int page, lv_color_t accent)
     lv_anim_start(&a);
 }
 
+static lv_obj_t *dot_create()
+{
+    lv_obj_t *d = lv_obj_create(indicator);
+    ui_strip_obj(d);
+    lv_obj_clear_flag(d, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(d, 8, 8);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    return d;
+}
+
 static void indicator_create()
 {
     indicator = lv_obj_create(lv_layer_top());
@@ -110,12 +124,7 @@ static void indicator_create()
     lv_obj_set_flex_align(indicator, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_align(indicator, LV_ALIGN_BOTTOM_MID, 0, -16);
     for (int i = 0; i < PAGE_COUNT; i++) {
-        dots[i] = lv_obj_create(indicator);
-        ui_strip_obj(dots[i]);
-        lv_obj_clear_flag(dots[i], LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_size(dots[i], 8, 8);
-        lv_obj_set_style_radius(dots[i], LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_opa(dots[i], LV_OPA_COVER, 0);
+        dots[i] = dot_create();
     }
     lv_obj_add_flag(indicator, LV_OBJ_FLAG_HIDDEN);
 }
@@ -217,6 +226,8 @@ static void tick_cb(lv_timer_t *)
     page_system_update(&t);
     t.active = true;
 
+    page_deck_update(&t);
+    ui_pair_update(&t);
     ui_portal_update(&t);
     if (splash_open) {
         splash_open = ui_splash_update(&t);
@@ -229,6 +240,16 @@ static void mount_page(lv_obj_t *tile, void (*create_screen)(), lv_obj_t **scree
     ui_mount_screen(*screen, tile);
     *screen = NULL;
     bind(tile);
+}
+
+static lv_obj_t *tile_create(int col)
+{
+    lv_obj_t *tile = lv_tileview_add_tile(tv, col, 0, (lv_dir_t)(LV_DIR_LEFT | LV_DIR_RIGHT));
+    lv_obj_remove_style_all(tile);
+    // remove_style_all also drops the tile's local size and position.
+    lv_obj_set_size(tile, SCREEN_W, SCREEN_H);
+    lv_obj_set_pos(tile, col * SCREEN_W, 0);
+    return tile;
 }
 
 void ui_init()
@@ -254,11 +275,7 @@ void ui_init()
     lv_obj_set_scrollbar_mode(tv, LV_SCROLLBAR_MODE_OFF);
 
     for (int i = 0; i < PAGE_COUNT; i++) {
-        tiles[i] = lv_tileview_add_tile(tv, i, 0, (lv_dir_t)(LV_DIR_LEFT | LV_DIR_RIGHT));
-        lv_obj_remove_style_all(tiles[i]);
-        // remove_style_all also drops the tile's local size and position.
-        lv_obj_set_size(tiles[i], SCREEN_W, SCREEN_H);
-        lv_obj_set_pos(tiles[i], i * SCREEN_W, 0);
+        tiles[i] = tile_create(i);
     }
     mount_page(tiles[PAGE_CLOCK], create_screen_clock_page, &objects.clock_page, page_clock_create);
     mount_page(tiles[PAGE_CALENDAR], create_screen_calendar_page, &objects.calendar_page, page_calendar_create);
@@ -276,7 +293,40 @@ void ui_next_page()
     if (!tv) {
         return;
     }
-    lv_obj_set_tile_id(tv, (current_page() + 1) % PAGE_COUNT, 0, LV_ANIM_ON);
+    lv_obj_set_tile_id(tv, (current_page() + 1) % (PAGE_COUNT + deck_pages), 0, LV_ANIM_ON);
+}
+
+void ui_set_deck_pages(uint8_t n)
+{
+    if (!tv) {
+        return;
+    }
+    if (n > DECK_MAX_PAGES) {
+        n = DECK_MAX_PAGES;
+    }
+    if (n == deck_pages) {
+        return;
+    }
+    if (current_page() >= PAGE_COUNT + n) {
+        lv_obj_set_tile_id(tv, PAGE_CLOCK, 0, LV_ANIM_OFF);
+    }
+    for (int i = deck_pages; i < n; i++) {
+        tiles[PAGE_COUNT + i] = tile_create(PAGE_COUNT + i);
+        dots[PAGE_COUNT + i]  = dot_create();
+    }
+    for (int i = n; i < deck_pages; i++) {
+        lv_obj_del(tiles[PAGE_COUNT + i]);
+        lv_obj_del(dots[PAGE_COUNT + i]);
+        tiles[PAGE_COUNT + i] = NULL;
+        dots[PAGE_COUNT + i]  = NULL;
+    }
+    deck_pages = n;
+    last_page  = -1;
+}
+
+lv_obj_t *ui_deck_tile(uint8_t i)
+{
+    return i < deck_pages ? tiles[PAGE_COUNT + i] : NULL;
 }
 
 void ui_preview_backlight(uint8_t level)
