@@ -24,6 +24,14 @@ Ad-hoc signatures change on every build, so macOS forgets the Accessibility gran
 
 `~/Library/Application Support/LongDeck/config.json`. Changes are picked up automatically. An invalid file is not pushed and the error shows in the menu. Use "Open config folder" to create a sample.
 
+### Live widgets
+
+`pages[].live[]` holds live widgets next to `keys`; it is optional. Each entry is flat: `id`, `type` (`stat`, `volume` or `clock`), `col`, `row`, `w`, `h`, plus `metric` and `style` for `stat`. Metrics: `cpu`, `ram`, `gpu`, `temp`, `net_down`, `net_up`, `disk_free`, `disk_io`, `battery`. Styles: `bar`, `number`, `sparkline`. Keys and live widgets share the 8x2 grid and a cap of 16 widgets per page. The first-run sample includes a `Mac` page with these widgets.
+
+    {"id":"cpu","type":"stat","metric":"cpu","style":"sparkline","col":0,"row":0,"w":2,"h":1}
+
+Temperature reads SMC key `TCMz` without root; values outside 10-130 °C are dropped. `battery` shows `--` on a Mac without a battery.
+
 ## Pairing
 
 Choose "Pair with board…", pick the board, then type the 6-digit code shown on its screen. The key is stored in the login Keychain (service `dev.longdeck.LongDeck`).

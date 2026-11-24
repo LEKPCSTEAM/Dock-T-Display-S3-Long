@@ -41,6 +41,10 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 4. ปุ่ม hotkey / media / volume / type-text ต้องอนุญาต Accessibility — เมนู "Grant Accessibility…"
 5. หน้า deck ต่อท้าย นาฬิกา → ปฏิทิน → Focus → System ได้สูงสุด 8 หน้า (grid 8x2) ถ้าแอปไม่ได้เชื่อมต่อจะขึ้นป้าย "Mac offline" และปุ่มจางลง
 
+### Live widgets
+
+หน้า deck ใส่ live widget ได้ 3 แบบ: `stat` (CPU / RAM / GPU / temp / net / disk / battery แบบ bar, number หรือ sparkline), `volume` (slider + ปุ่ม mute) และ `clock` ค่า stat ส่งมาจากแอป Mac ทุกวินาที ถ้า Mac offline ทุก stat และ volume จะแสดง `--` ส่วน clock เดินต่อด้วยเวลาของบอร์ดเอง (`--:--` ถ้ายังไม่ sync NTP) ลาก slider เพื่อปรับ volume ของ Mac (ลากบน slider จะไม่เปลี่ยนหน้า) แตะไอคอนลำโพงเพื่อ mute / unmute ใน cell 1x1 หน่วย rate จะย่อเหลือตัวอักษรเดียว (เช่น `123M`) และ volume ที่ใช้ไม่ได้แสดง `n/a` รูปแบบ config ดู `mac/LongDeck/README.md`
+
 ยกเลิกการจับคู่ Mac: กดปุ่ม forget ในเว็บตั้งค่า หรือ
 
 ```bash
