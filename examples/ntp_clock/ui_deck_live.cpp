@@ -138,19 +138,30 @@ static void stat_create(LiveWidget *lw, lv_coord_t bw, lv_coord_t bh)
 {
     lv_coord_t inner = bw - INNER_PAD;
     lw->name = child_label(lw->box, &ui_font_th_16, COLOR_TEXT_DIM, deck_metric_label(lw->metric));
-    lv_obj_align(lw->name, LV_ALIGN_TOP_LEFT, 6, 4);
+    bool narrow = lw->w < 2;
+    lv_obj_align(lw->name, LV_ALIGN_TOP_LEFT, 6, narrow && lw->style != DS_BAR ? 0 : 4);
 
     if (lw->style == DS_NUMBER) {
-        const lv_font_t *f = pick_font(lw->w >= 2, is_rate(lw->metric) ? "888" : "100", inner);
+        const lv_font_t *f = narrow ? &ui_font_th_22
+                                    : pick_font(true, is_rate(lw->metric) ? "888" : "100", inner);
         lw->text = child_label(lw->box, f, COLOR_TEXT, "--");
-        lv_obj_align(lw->text, LV_ALIGN_CENTER, 0, 8);
         lw->unit = child_label(lw->box, &ui_font_th_16, COLOR_TEXT_DIM, "");
+        if (narrow) {
+            lv_obj_align(lw->text, LV_ALIGN_TOP_MID, 0, 25);
+            lv_obj_align(lw->unit, LV_ALIGN_TOP_MID, 0, 58);
+        } else {
+            lv_obj_align(lw->text, LV_ALIGN_CENTER, 0, 8);
+        }
     } else if (lw->style == DS_SPARKLINE) {
         lw->text = child_label(lw->box, &ui_font_th_16, COLOR_TEXT, "--");
-        lv_obj_align(lw->text, LV_ALIGN_TOP_RIGHT, -6, 4);
+        if (narrow) {
+            lv_obj_align(lw->text, LV_ALIGN_TOP_MID, 0, 25);
+        } else {
+            lv_obj_align(lw->text, LV_ALIGN_TOP_RIGHT, -6, 4);
+        }
         lv_obj_t *c = lv_chart_create(lw->box);
         no_click(c);
-        lv_obj_set_size(c, inner, bh - 34);
+        lv_obj_set_size(c, inner, bh - (narrow ? 58 : 34));
         lv_obj_align(c, LV_ALIGN_BOTTOM_MID, 0, -6);
         lv_chart_set_type(c, LV_CHART_TYPE_LINE);
         lv_chart_set_point_count(c, DECK_HISTORY_LEN);
@@ -168,7 +179,7 @@ static void stat_create(LiveWidget *lw, lv_coord_t bw, lv_coord_t bh)
         if (lw->w >= 2) {
             lv_obj_align(lw->text, LV_ALIGN_TOP_RIGHT, -6, 2);
         } else {
-            lv_obj_align(lw->text, LV_ALIGN_CENTER, 0, 0);
+            lv_obj_align(lw->text, LV_ALIGN_TOP_MID, 0, 29);
         }
         lv_obj_t *b = lv_bar_create(lw->box);
         no_click(b);
@@ -218,8 +229,8 @@ static void volume_create(LiveWidget *lw, lv_coord_t bw, lv_coord_t bh)
         lw->slider = s;
         deck_slider_reset(&lw->gate);
     } else {
-        lv_obj_align(lw->btn, LV_ALIGN_TOP_MID, 0, 4);
-        lv_obj_align(lw->text, LV_ALIGN_BOTTOM_MID, 0, -2);
+        lv_obj_align(lw->btn, LV_ALIGN_TOP_MID, 0, 2);
+        lv_obj_align(lw->text, LV_ALIGN_BOTTOM_MID, 0, -1);
     }
 }
 
@@ -278,16 +289,18 @@ static void stat_refresh(LiveWidget *lw, const UiTick *t, bool ready)
     if (lw->style == DS_NUMBER) {
         lv_label_set_text(lw->text, val);
         lv_label_set_text(lw->unit, unit);
-        lv_obj_update_layout(lw->box);
         if (lw->w >= 2) {
+            lv_obj_update_layout(lw->box);
             lv_obj_align_to(lw->unit, lw->text, LV_ALIGN_OUT_RIGHT_BOTTOM, 4, -4);
-        } else {
-            lv_obj_align_to(lw->unit, lw->text, LV_ALIGN_OUT_BOTTOM_MID, 0, -6);
         }
         return;
     }
 
-    join_text(joined, sizeof(joined), val, unit);
+    if (lw->w < 2 && is_rate(lw->metric)) {
+        snprintf(joined, sizeof(joined), "%s", val);
+    } else {
+        join_text(joined, sizeof(joined), val, unit);
+    }
     lv_label_set_text(lw->text, joined);
     bool known = s->valid & (1u << lw->metric);
     float peak = known ? deck_history_max(&hist, lw->metric) : 0;
