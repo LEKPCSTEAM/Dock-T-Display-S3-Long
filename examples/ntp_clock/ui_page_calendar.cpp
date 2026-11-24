@@ -1,5 +1,7 @@
 #include "ui_internal.h"
 
+#include "eez/gen/screens.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -213,9 +215,10 @@ void apply_accent(lv_color_t accent)
 
 void page_calendar_create(lv_obj_t *tile)
 {
-    s_meter = lv_meter_create(tile);
+    (void)tile;
+    s_meter = lv_meter_create(objects.cont_calendar_meter);
     lv_obj_set_size(s_meter, 168, 168);
-    lv_obj_set_pos(s_meter, 14, 6);
+    lv_obj_set_pos(s_meter, 0, 0);
     lv_obj_clear_flag(s_meter, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_bg_color(s_meter, COLOR_PANEL, 0);
     lv_obj_set_style_bg_opa(s_meter, LV_OPA_COVER, 0);
@@ -238,33 +241,19 @@ void page_calendar_create(lv_obj_t *tile)
     lv_obj_set_style_pad_all(s_meter, 5, LV_PART_INDICATOR);
     lv_obj_set_style_radius(s_meter, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
 
-    const lv_coord_t x = 204;
+    s_date = objects.label_calendar_date;
+    s_year = objects.label_calendar_years;
+    s_doy = objects.label_calendar_doy;
+    s_bar = objects.bar_calendar_year;
+    s_progress = objects.label_calendar_year_pct;
+    s_gift = objects.label_calendar_gift;
+    s_holiday = objects.label_calendar_holiday;
 
-    s_date = ui_label(tile, &ui_font_th_22, COLOR_TEXT, "—");
-    lv_obj_set_pos(s_date, x, 6);
-
-    s_year = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
-    lv_obj_set_pos(s_year, x, 38);
-
-    s_doy = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
-    lv_obj_set_pos(s_doy, x, 62);
-
-    s_bar = lv_bar_create(tile);
-    lv_obj_set_size(s_bar, 300, 8);
-    lv_obj_set_pos(s_bar, x, 94);
-    lv_bar_set_range(s_bar, 0, 1000);
-    lv_obj_set_style_bg_color(s_bar, COLOR_PANEL_HI, 0);
-    lv_obj_set_style_bg_opa(s_bar, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_opa(s_bar, LV_OPA_COVER, LV_PART_INDICATOR);
-
-    s_progress = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "—");
-    lv_obj_set_pos(s_progress, x, 108);
-
-    s_gift = ui_label(tile, &ui_font_th_22, COLOR_TEXT, SYM_GIFT);
-    lv_obj_set_pos(s_gift, x, 142);
-
-    s_holiday = ui_label(tile, &ui_font_th_16, COLOR_TEXT, "—");
-    lv_obj_set_pos(s_holiday, x + 34, 146);
+    lv_obj_t *const placeholders[] = {s_date, s_year, s_doy, s_progress, s_holiday};
+    for (lv_obj_t *l : placeholders) {
+        lv_label_set_text(l, "—");
+    }
+    lv_bar_set_value(s_bar, 0, LV_ANIM_OFF);
 
     s_date_txt[0] = s_year_txt[0] = s_doy_txt[0] = s_progress_txt[0] = s_holiday_txt[0] = 0;
     s_accent = COLOR_TEXT;

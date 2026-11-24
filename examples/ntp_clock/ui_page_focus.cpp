@@ -1,5 +1,7 @@
 #include "ui_internal.h"
 
+#include "eez/gen/screens.h"
+
 #include <Arduino.h>
 #include <stdio.h>
 
@@ -113,20 +115,6 @@ void tile_event_cb(lv_event_t *e)
     }
 }
 
-lv_obj_t *make_dot(lv_obj_t *parent, lv_coord_t x, lv_coord_t y)
-{
-    lv_obj_t *dot = lv_obj_create(parent);
-    ui_strip_obj(dot);
-    lv_obj_clear_flag(dot, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_size(dot, 16, 16);
-    lv_obj_set_pos(dot, x, y);
-    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(dot, 2, 0);
-    lv_obj_set_style_border_opa(dot, LV_OPA_COVER, 0);
-    return dot;
-}
-
 void paint_dots(lv_color_t accent)
 {
     for (int i = 0; i < DOT_COUNT; i++) {
@@ -144,36 +132,23 @@ void page_focus_create(lv_obj_t *tile)
     lv_obj_add_flag(tile, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(tile, tile_event_cb, LV_EVENT_ALL, nullptr);
 
-    s_arc = lv_arc_create(tile);
-    lv_obj_set_size(s_arc, 150, 150);
-    lv_obj_set_pos(s_arc, 24, 15);
-    lv_obj_remove_style(s_arc, nullptr, LV_PART_KNOB);
-    lv_obj_clear_flag(s_arc, LV_OBJ_FLAG_CLICKABLE);
-    lv_arc_set_rotation(s_arc, 270);
-    lv_arc_set_bg_angles(s_arc, 0, 360);
+    s_arc = objects.arc_focus_ring;
     lv_arc_set_range(s_arc, 0, ARC_MAX);
     lv_arc_set_value(s_arc, ARC_MAX);
-    lv_obj_set_style_arc_width(s_arc, 12, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(s_arc, 12, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(s_arc, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(s_arc, true, LV_PART_INDICATOR);
 
-    s_icon = ui_label(s_arc, &ui_font_th_32, COLOR_TEXT, SYM_BRAIN);
-    lv_obj_center(s_icon);
+    s_icon = objects.label_focus_icon;
+    s_time = objects.label_focus_time;
+    s_mode = objects.label_focus_mode;
+    s_hint = objects.label_focus_hint;
+    s_dots[0] = objects.cont_focus_dot0;
+    s_dots[1] = objects.cont_focus_dot1;
+    s_dots[2] = objects.cont_focus_dot2;
+    s_dots[3] = objects.cont_focus_dot3;
 
-    s_time = ui_label(tile, &ui_font_digits_56, COLOR_TEXT, "25:00");
-    lv_obj_set_pos(s_time, 214, 10);
-
-    s_mode = ui_label(tile, &ui_font_th_22, COLOR_TEXT, MODE_NAME[MODE_FOCUS]);
-    lv_obj_set_pos(s_mode, 214, 68);
-
-    for (int i = 0; i < DOT_COUNT; i++) {
-        s_dots[i] = make_dot(tile, 214 + i * 28, 108);
-    }
+    lv_label_set_text(s_time, "25:00");
+    lv_label_set_text(s_mode, MODE_NAME[MODE_FOCUS]);
+    lv_label_set_text(s_icon, SYM_BRAIN);
     paint_dots(COLOR_TEXT);
-
-    s_hint = ui_label(tile, &ui_font_th_16, COLOR_TEXT_DIM, "แตะเพื่อเริ่ม/หยุด · กดค้างเพื่อรีเซ็ต");
-    lv_obj_set_pos(s_hint, 214, 140);
 }
 
 void page_focus_update(const UiTick *t)
