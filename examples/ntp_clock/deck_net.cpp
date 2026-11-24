@@ -20,11 +20,14 @@
 #define OUT_QUEUE_LEN  8
 
 struct OutMsg {
-    uint8_t kind;  // 0 = press, 1 = page, 2 = slider
+    uint8_t kind;  // 0 = press, 1 = page, 2 = slider, 3 = claude_action
     bool    long_press;
     int8_t  index;
     uint8_t value;
     char    id[16];
+    char    session[DECK_CLAUDE_ID_MAX];
+    char    request[DECK_CLAUDE_REQ_MAX];
+    uint8_t action;
 };
 
 struct FaceJob {
@@ -72,6 +75,12 @@ static int8_t                     s_last_page = -1;
 static bool                       s_had_ready;
 static DeckSliderGate             s_gate;
 static char                       s_slider_id[16];
+static DeckClaude                 s_claude_parse;
+static DeckClaude                 s_claude;
+static DeckClaudeAck              s_claude_ack;
+static bool                       s_claude_ok;
+static bool                       s_claude_ack_ok;
+static uint32_t                   s_claude_version;
 
 static void lock()
 {
@@ -208,6 +217,38 @@ static void on_message(void *, const char *type, const char *body, size_t body_l
         unlock();
         return;
     }
+    if (strcmp(type, "claude") == 0) {
+        if (!deck_claude_parse(body, body_len, &s_claude_parse)) {
+            Serial.println("[deck] claude ignored");
+            return;
+        }
+        lock();
+        bool changed = !s_claude_ok || !deck_claude_prompt_same(&s_claude.prompt, &s_claude_parse.prompt);
+        s_claude     = s_claude_parse;
+        s_claude_ok  = true;
+        s_claude_version++;
+        unlock();
+        if (changed) {
+            if (s_claude_parse.prompt.present) Serial.printf("[deck] claude prompt %s\n", s_claude_parse.prompt.request);
+            else Serial.println("[deck] claude prompt cleared");
+        }
+        return;
+    }
+    if (strcmp(type, "claude_ack") == 0) {
+        DeckClaudeAck ack;
+        if (!deck_claude_ack_parse(body, body_len, &ack)) {
+            Serial.println("[deck] claude_ack ignored");
+            return;
+        }
+        lock();
+        s_claude_ack    = ack;
+        s_claude_ack_ok = true;
+        s_claude_version++;
+        unlock();
+        if (ack.ok) Serial.printf("[deck] claude ack %s ok\n", ack.request);
+        else Serial.printf("[deck] claude ack %s %s\n", ack.request, ack.reason);
+        return;
+    }
     if (strcmp(type, "layout") != 0) return;
     char err[48];
     if (!deck_layout_parse(body, body_len, &s_parse_tmp, err, sizeof(err))) {
@@ -338,6 +379,12 @@ static void drain_queue()
             if (deck_slider_body(m.id, m.value, body, sizeof(body))) send_sealed(active, "slider", body);
             continue;
         }
+        if (m.kind == 3) {
+            char body[160];
+            if (deck_claude_action_body(m.session, m.request, m.action, body, sizeof(body))) send_sealed(active, "claude_action", body);
+            else Serial.println("[deck] claude action dropped");
+            continue;
+        }
         JsonDocument d;
         if (m.kind == 0) {
             d["id"]   = m.id;
@@ -427,6 +474,9 @@ void deck_net_loop()
         deck_history_clear(&s_live_hist);
         deck_slider_reset(&s_gate);
         s_live_version++;
+        s_claude_ok     = false;
+        s_claude_ack_ok = false;
+        s_claude_version++;
     }
     s_had_ready = any_ready;
     unlock();
@@ -542,6 +592,48 @@ void deck_net_slider(const char *id, uint8_t value)
     bool send = deck_slider_offer(&s_gate, millis(), value, &out);
     unlock();
     if (send) queue_slider(id, (uint8_t)out);
+}
+
+uint32_t deck_net_claude_version()
+{
+    lock();
+    uint32_t v = s_claude_version;
+    unlock();
+    return v;
+}
+
+bool deck_net_claude(DeckClaude *out)
+{
+    if (!out) return false;
+    lock();
+    bool ok = s_claude_ok;
+    if (ok) *out = s_claude;
+    unlock();
+    return ok;
+}
+
+bool deck_net_take_claude_ack(DeckClaudeAck *out)
+{
+    if (!out) return false;
+    lock();
+    bool ok = s_claude_ack_ok;
+    if (ok) {
+        *out            = s_claude_ack;
+        s_claude_ack_ok = false;
+    }
+    unlock();
+    return ok;
+}
+
+void deck_net_claude_action(const char *session, const char *request, uint8_t action)
+{
+    if (!s_queue || !session || !request || !deck_net_ready()) return;
+    OutMsg m = {};
+    m.kind   = 3;
+    m.action = action;
+    strlcpy(m.session, session, sizeof(m.session));
+    strlcpy(m.request, request, sizeof(m.request));
+    xQueueSend(s_queue, &m, 0);
 }
 
 void deck_net_forget()

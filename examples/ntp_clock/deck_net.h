@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include "deck_claude.h"
 #include "deck_layout.h"
 #include "deck_live.h"
 
@@ -19,3 +20,7 @@ uint32_t deck_net_live_version();                              // bumps on stats
 bool     deck_net_stats(DeckStats *stats, DeckHistory *hist);  // hist may be NULL
 bool     deck_net_volume(DeckVolume *out);
 void     deck_net_slider(const char *id, uint8_t value);       // dropped when not ready
+uint32_t deck_net_claude_version();                            // bumps on claude, claude_ack and link loss
+bool     deck_net_claude(DeckClaude *out);                     // false while offline or before the first frame
+bool     deck_net_take_claude_ack(DeckClaudeAck *out);         // one-shot
+void     deck_net_claude_action(const char *session, const char *request, uint8_t action);  // dropped when not ready
