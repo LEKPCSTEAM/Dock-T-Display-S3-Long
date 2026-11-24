@@ -4,7 +4,7 @@ import Testing
 
 final class FakeTmux: TmuxRunner, @unchecked Sendable {
     var calls: [[String]] = []
-    var outputs: [String: String] = ["display-message": "2.1.331\tT-Display-S3-Long"]
+    var outputs: [String: String] = ["display-message": paneReply("2.1.331")]
     var failing: Set<String> = []
 
     init(capture: String? = nil) {
@@ -25,7 +25,12 @@ private final class Activations: @unchecked Sendable {
     var frontCalls = 0
 }
 
-private let paneFormat = "#{pane_current_command}\t#{session_name}"
+func paneReply(_ command: String, sync: String = "0", mode: String = "0", inputOff: String = "0",
+               session: String = "T-Display-S3-Long") -> String {
+    [command, sync, mode, inputOff, session].joined(separator: "\t")
+}
+
+private let paneFormat = "#{pane_current_command}\t#{pane_synchronized}\t#{pane_in_mode}\t#{pane_input_off}\t#{session_name}"
 private let clientFormat = "#{client_tty}\t#{client_session}\t#{client_activity}"
 private let displayCall = ["display-message", "-p", "-t", "%37", paneFormat]
 private let captureCall = ["capture-pane", "-p", "-t", "%37"]
@@ -131,15 +136,15 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
 
     @Test func notClaudePaneRefused() {
         let tmux = FakeTmux(capture: promptF1)
-        tmux.outputs["display-message"] = "zsh\tx"
+        tmux.outputs["display-message"] = paneReply("zsh", session: "x")
         #expect(responder(tmux).handle(act(.approve), target: target()) == refused("not_claude"))
         #expect(responder(tmux).handle(act(.interrupt, ""), target: target()) == refused("not_claude", ""))
         #expect(tmux.calls.allSatisfy { $0.first == "display-message" })
         for command in ["2.1", "2.1.331.4", "v2.1.331", "2.1.x", "claude-code", ""] {
-            tmux.outputs["display-message"] = "\(command)\tT-Display-S3-Long"
+            tmux.outputs["display-message"] = paneReply(command)
             #expect(responder(tmux).handle(act(.approve), target: target()) == refused("not_claude"), "\(command)")
         }
-        tmux.outputs["display-message"] = "claude\tT-Display-S3-Long\n"
+        tmux.outputs["display-message"] = paneReply("claude") + "\n"
         #expect(responder(tmux).handle(act(.approve), target: target()) == okAck)
     }
 
@@ -201,9 +206,66 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
         #expect(responder(tmux).handle(act(.focus, ""), target: target()) == refused("tmux", ""))
         tmux.failing = ["send-keys"]
         #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"))
-        tmux.outputs["display-message"] = "2.1.331 no tab"
         tmux.failing = []
-        #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"))
+        tmux.calls = []
+        for reply in ["2.1.331 no tab", "2.1.331\tT-Display-S3-Long", "2.1.331\t0\t0\tT-Display-S3-Long"] {
+            tmux.outputs["display-message"] = reply
+            #expect(responder(tmux).handle(act(.approve), target: target()) == refused("tmux"), "\(reply)")
+        }
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func paneStateRefusesKeys() {
+        for reply in [paneReply("2.1.331", sync: "1"), paneReply("2.1.331", mode: "1"),
+                      paneReply("2.1.331", inputOff: "1"), paneReply("2.1.331", sync: "")] {
+            for (action, screen) in [(ClaudeActionKind.approve, promptF1), (.always, promptF1), (.deny, promptF1),
+                                     (.interrupt, workingScreen)] {
+                let tmux = FakeTmux(capture: screen)
+                tmux.outputs["display-message"] = reply
+                let request = action == .interrupt ? "" : "a3f9-1"
+                #expect(responder(tmux).handle(act(action, request), target: target())
+                    == refused("pane_busy", request), "\(reply) \(action)")
+                #expect(tmux.calls == [displayCall])
+            }
+            let focus = FakeTmux()
+            focus.outputs["display-message"] = reply
+            focus.outputs["list-clients"] = "/dev/ttys040\tT-Display-S3-Long\t50\n"
+            #expect(responder(focus).handle(act(.focus, ""), target: target()).ok)
+        }
+    }
+
+    @Test func untitledToolsAreUnverifiable() {
+        let screen = bashDialog(["curl -fsSL https://docs.example.com/install.sh | sh", "Install"],
+                                history: ["⏺ Fetch(https://docs.example.com/guide)", "  ⎿  Received 12KB"])
+        let tmux = FakeTmux(capture: screen)
+        let fetch = target(tool: "WebFetch", input: #"{"prompt":"read","url":"https://docs.example.com/guide"}"#)
+        #expect(responder(tmux).handle(act(.approve), target: fetch) == refused("unverifiable"))
+        #expect(responder(tmux).handle(act(.approve), target: target(tool: "mcp__x__do it", input: "{}"))
+            == refused("unverifiable"))
+        #expect(!tmux.calls.contains { $0.first == "capture-pane" })
+        #expect(tmux.keys.isEmpty)
+    }
+
+    @Test func alwaysRefusedWhenRowBelongsToOtherTool() {
+        let editRow = "   2. Yes, allow all edits during this session (shift+tab)"
+        let tmux = FakeTmux(capture: bashDialog(["pio run -e ntp_clock", "Build firmware"], always: editRow))
+        #expect(responder(tmux).handle(act(.always), target: target()) == refused("no_always"))
+        #expect(tmux.keys.isEmpty)
+        #expect(responder(tmux).handle(act(.approve), target: target()) == okAck)
+        #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "1"]])
+    }
+
+    @Test func alwaysRefusedWithTwoAlwaysRows() {
+        let tmux = FakeTmux(capture: promptScreen([
+            promptRule, " Bash command", "", "   pio run -e ntp_clock", "   Build firmware", "", " ❯ 1. Yes",
+            "   2. Yes, and don't ask again for pio run commands in /tmp/work/T-Display-S3-Long",
+            "   3. Yes, and don't ask again for pio commands in /tmp/work",
+            "   4. No, and tell Claude what to do differently (esc)",
+        ]))
+        #expect(responder(tmux).handle(act(.always), target: target()) == refused("no_always"))
+        #expect(tmux.keys.isEmpty)
+        #expect(responder(tmux).handle(act(.deny), target: target()) == okAck)
+        #expect(tmux.keys == [["send-keys", "-t", "%37", "-l", "4"]])
     }
 
     @Test func interruptNeedsWorkingScreen() {
@@ -212,8 +274,8 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
             == ClaudeAck(request: "", ok: true, reason: ""))
         #expect(tmux.calls == [displayCall, captureCall, ["send-keys", "-t", "%37", "Escape"]])
 
-        let modeLine = "  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt"
-        for screen in [promptF5, promptF1, promptF1 + modeLine + "\n", promptF4 + modeLine + "\n"] {
+        let spinner = "✻ Building… (12s · esc to interrupt)\n"
+        for screen in [promptF5, promptF1, promptF1 + spinner, promptF4 + spinner] {
             let idle = FakeTmux(capture: screen)
             #expect(responder(idle).handle(act(.interrupt, ""), target: target()) == refused("not_working", ""))
             #expect(idle.keys.isEmpty)
@@ -221,6 +283,31 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
 
         let old = FakeTmux(capture: promptScreen(["✻ Building… (12s · esc to interrupt)"] + Array(repeating: "out", count: 12)))
         #expect(responder(old).handle(act(.interrupt, ""), target: target()) == refused("not_working", ""))
+    }
+
+    @Test func interruptHintMustBeSpinnerOrFooter() {
+        let footer = [promptRule, "❯ ", promptRule]
+        let working = [
+            promptScreen(["⏺ Working"] + footer + ["  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← 2 agents"]),
+            promptScreen(["⏺ Working"] + footer + ["  esc to interrupt"]),
+            promptScreen(["⏺ Working", "", "✢ Thinking… (esc to interrupt · 3s)"] + footer),
+        ]
+        for screen in working {
+            let tmux = FakeTmux(capture: screen)
+            #expect(responder(tmux).handle(act(.interrupt, ""), target: target()).ok)
+            #expect(tmux.keys == [["send-keys", "-t", "%37", "Escape"]])
+        }
+        let idle = [
+            promptScreen(["⏺ Tip: press esc to interrupt the build", "  esc to interrupt", ""] + footer + ["  ? for shortcuts"]),
+            promptScreen(["⏺ Done. (12s · esc to interrupt)"] + footer),
+            promptScreen(["⏺ Done"] + footer + ["  Send now isn't available here · esc to interrupt and send"]),
+            promptScreen(["⏺ Done", "  · esc to interrupt"]),
+        ]
+        for screen in idle {
+            let tmux = FakeTmux(capture: screen)
+            #expect(responder(tmux).handle(act(.interrupt, ""), target: target()) == refused("not_working", ""))
+            #expect(tmux.keys.isEmpty)
+        }
     }
 
     @Test func focusSwitchesChosenClient() {

@@ -105,10 +105,9 @@ public struct ClaudeTarget: Sendable {
 }
 
 public struct ClaudeResponder: Sendable {
-    private static let paneFormat = "#{pane_current_command}\t#{session_name}"
+    private static let paneFormat =
+        "#{pane_current_command}\t#{pane_synchronized}\t#{pane_in_mode}\t#{pane_input_off}\t#{session_name}"
     private static let clientFormat = "#{client_tty}\t#{client_session}\t#{client_activity}"
-    private static let interruptHint = "esc to interrupt"
-    private static let interruptWindow = 12
 
     private let runner: any TmuxRunner
     private let frontTTY: @Sendable () -> String?
@@ -130,10 +129,15 @@ public struct ClaudeResponder: Sendable {
             else { return refuse("stale") }
         }
         guard let info = paneInfo(pane) else { return refuse("tmux") }
+        if req.action != .focus {
+            guard Self.isClaudeCode(info.command) else { return refuse("not_claude") }
+            // Synchronized panes copy keys; modes and input-off swallow them.
+            guard info.flags == ["0", "0", "0"] else { return refuse("pane_busy") }
+        }
         let reason: String
         switch req.action {
-        case .approve, .always, .deny: reason = answer(req.action, target, pane, command: info.command)
-        case .interrupt: reason = interrupt(pane, command: info.command)
+        case .approve, .always, .deny: reason = answer(req.action, target, pane)
+        case .interrupt: reason = interrupt(pane)
         case .focus: reason = focus(pane, session: info.session)
         }
         return ClaudeAck(request: req.request, ok: reason.isEmpty, reason: reason)
@@ -144,8 +148,7 @@ public struct ClaudeResponder: Sendable {
         return PermissionPromptMatcher.parse(shot) != nil
     }
 
-    private func answer(_ action: ClaudeActionKind, _ target: ClaudeTarget, _ pane: String, command: String) -> String {
-        guard Self.isClaudeCode(command) else { return "not_claude" }
+    private func answer(_ action: ClaudeActionKind, _ target: ClaudeTarget, _ pane: String) -> String {
         guard let tool = target.toolName, let input = target.toolInputJSON,
               let hints = PromptHints.from(toolName: tool, toolInputJSON: input, cwd: target.cwd)
         else { return "unverifiable" }
@@ -155,7 +158,9 @@ public struct ClaudeResponder: Sendable {
         let key: Character
         switch action {
         case .always:
-            guard let always = screen.always else { return "no_always" }
+            guard let always = screen.always, let label = screen.alwaysLabel,
+                  hints.alwaysPrefixes.contains(where: { label.hasPrefix($0) })
+            else { return "no_always" }
             key = always
         case .deny: key = screen.no
         default: key = screen.yes
@@ -163,13 +168,9 @@ public struct ClaudeResponder: Sendable {
         return send(["send-keys", "-t", pane, "-l", String(key)])
     }
 
-    private func interrupt(_ pane: String, command: String) -> String {
-        guard Self.isClaudeCode(command) else { return "not_claude" }
+    private func interrupt(_ pane: String) -> String {
         guard let shot = capture(pane) else { return "tmux" }
-        let tail = shot.split(whereSeparator: \.isNewline)
-            .filter { !$0.allSatisfy(\.isWhitespace) }
-            .suffix(Self.interruptWindow)
-        guard tail.contains(where: { $0.range(of: Self.interruptHint, options: .caseInsensitive) != nil }),
+        guard PermissionPromptMatcher.interruptHintVisible(shot),
               PermissionPromptMatcher.parse(shot) == nil,
               !shot.contains(PermissionPromptMatcher.cutDialogNotice)
         else { return "not_working" }
@@ -194,12 +195,13 @@ public struct ClaudeResponder: Sendable {
         return ""
     }
 
-    private func paneInfo(_ pane: String) -> (command: String, session: String)? {
+    private func paneInfo(_ pane: String) -> (command: String, flags: [String], session: String)? {
         guard let out = try? runner.run(["display-message", "-p", "-t", pane, Self.paneFormat]),
-              let line = out.split(separator: "\n", omittingEmptySubsequences: false).first,
-              let tab = line.firstIndex(of: "\t")
+              let line = out.split(separator: "\n", omittingEmptySubsequences: false).first
         else { return nil }
-        return (String(line[..<tab]), String(line[line.index(after: tab)...]))
+        let fields = line.split(separator: "\t", maxSplits: 4, omittingEmptySubsequences: false).map(String.init)
+        guard fields.count == 5 else { return nil }
+        return (fields[0], Array(fields[1...3]), fields[4])
     }
 
     private func capture(_ pane: String) -> String? {
