@@ -84,8 +84,48 @@ private func send(_ port: UInt16, path: String, method: String = "POST", token: 
         #expect(ClaudeListener.validPane(nil) == nil)
     }
 
+    @Test func emptyTokenRejected() async throws {
+        let l = ClaudeListener(port: 0, token: "") { _ in }
+        let result: Result<UInt16, Error> = await withCheckedContinuation { c in
+            l.start { c.resume(returning: $0) }
+        }
+        #expect({ if case .failure = result { return true } else { return false } }())
+    }
+
+    @Test func deadlineClosesTricklingClient() async throws {
+        let box = Collector()
+        let l = ClaudeListener(port: 0, token: "t0k", connectionDeadline: 0.5) { box.items.append($0) }
+        let port: UInt16 = try await withCheckedThrowingContinuation { c in l.start { c.resume(with: $0) } }
+        defer { l.stop() }
+        let raw = RawClient(port: port)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        for _ in 0..<6 {
+            raw.send("X")
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+        #expect(raw.closed)
+    }
+
+    @Test func connectionCapDropsExtraClients() async throws {
+        let box = Collector()
+        let l = ClaudeListener(port: 0, token: "t0k", maxConnections: 2) { box.items.append($0) }
+        let port: UInt16 = try await withCheckedThrowingContinuation { c in l.start { c.resume(with: $0) } }
+        defer { l.stop() }
+        let a = RawClient(port: port)
+        let b = RawClient(port: port)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let c = RawClient(port: port)
+        try await Task.sleep(nanoseconds: 500_000_000)
+        #expect(!a.closed && !b.closed)
+        #expect(c.closed)
+        a.cancel(); b.cancel(); c.cancel()
+    }
+
     @Test func notReachableFromLanAddress() async throws {
-        guard let addr = Self.lanAddress() else { return }
+        guard let addr = Self.lanAddress() else {
+            try Test.cancel("no up en* IPv4 address")
+            return
+        }
         let box = Collector()
         let (l, port) = try await startListener(box)
         defer { l.stop() }
@@ -126,6 +166,23 @@ private func send(_ port: UInt16, path: String, method: String = "POST", token: 
         }
         return nil
     }
+}
+
+private final class RawClient: @unchecked Sendable {
+    private let conn: NWConnection
+    private let done = Ready()
+    var closed: Bool { done.value }
+
+    init(port: UInt16) {
+        conn = NWConnection(host: "127.0.0.1", port: NWEndpoint.Port(rawValue: port)!, using: .tcp)
+        conn.start(queue: .global())
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 1024) { [done] _, _, complete, error in
+            if complete || error != nil { done.set() }
+        }
+    }
+
+    func send(_ s: String) { conn.send(content: Data(s.utf8), completion: .contentProcessed { _ in }) }
+    func cancel() { conn.cancel() }
 }
 
 private final class Ready: @unchecked Sendable {

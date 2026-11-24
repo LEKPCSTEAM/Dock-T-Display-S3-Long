@@ -19,21 +19,33 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
 
 @MainActor public final class ClaudeListener {
     private let port: UInt16
+    private let connectionDeadline: TimeInterval
+    private let maxConnections: Int
     private let token: [UInt8]
     private let onInbound: @MainActor (ClaudeInbound) -> Void
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: Connection] = [:]
 
-    public init(port: UInt16, token: String, onInbound: @escaping @MainActor (ClaudeInbound) -> Void) {
+    public var onFailure: (@MainActor (Error) -> Void)?
+
+    public init(port: UInt16, token: String, connectionDeadline: TimeInterval = 5, maxConnections: Int = 32,
+                onInbound: @escaping @MainActor (ClaudeInbound) -> Void) {
         self.port = port
         self.token = Array(token.utf8)
+        self.connectionDeadline = connectionDeadline
+        self.maxConnections = maxConnections
         self.onInbound = onInbound
     }
 
     public func start(onReady: @escaping @MainActor (Result<UInt16, Error>) -> Void) {
         stop()
+        guard !token.isEmpty else {
+            onReady(.failure(ClaudeListenerError(message: "empty token")))
+            return
+        }
         let params = NWParameters.tcp
         params.acceptLocalOnly = true
+        params.allowLocalEndpointReuse = true
         let local: NWEndpoint.Port = port == 0 ? .any : NWEndpoint.Port(rawValue: port) ?? .any
         params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: local)
         let l: NWListener
@@ -42,9 +54,13 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
             return
         }
         var reported = false
-        l.stateUpdateHandler = { [weak l] state in
+        l.stateUpdateHandler = { [weak self, weak l] state in
             MainActor.assumeIsolated {
-                guard !reported else { return }
+                guard let self else { return }
+                if reported {
+                    if case .failed(let error) = state { self.onFailure?(error) }
+                    return
+                }
                 switch state {
                 case .ready:
                     reported = true
@@ -77,7 +93,11 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
     }
 
     private func accept(_ nw: NWConnection) {
-        let c = Connection(nw) { [weak self] request in self?.route(request) ?? 500 }
+        guard connections.count < maxConnections else {
+            nw.cancel()
+            return
+        }
+        let c = Connection(nw, deadline: connectionDeadline) { [weak self] request in self?.route(request) ?? 500 }
         let id = ObjectIdentifier(c)
         connections[id] = c
         c.onClosed = { [weak self] in self?.connections[id] = nil }
@@ -92,7 +112,8 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
         default: return 404
         }
         guard r.method == "POST" else { return 405 }
-        guard Self.constantTimeEqual(Array((r.headers["x-longdeck-token"] ?? "").utf8), token) else { return 403 }
+        guard let supplied = r.headers["x-longdeck-token"],
+              Self.constantTimeEqual(Array(supplied.utf8), token) else { return 403 }
         onInbound(ClaudeInbound(channel: channel, pane: Self.validPane(r.headers["x-tmux-pane"]), body: r.body))
         return 200
     }
@@ -107,7 +128,7 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
 }
 
 @MainActor private final class Connection {
-    private static let idleSeconds = 5.0
+    private let deadline: TimeInterval
     private static let reasons = [200: "OK", 400: "Bad Request", 403: "Forbidden", 404: "Not Found",
                                   405: "Method Not Allowed", 411: "Length Required",
                                   413: "Payload Too Large", 431: "Request Header Fields Too Large",
@@ -119,8 +140,9 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
     private var finished = false
     var onClosed: (() -> Void)?
 
-    init(_ nw: NWConnection, handle: @escaping (HTTPRequest) -> Int) {
+    init(_ nw: NWConnection, deadline: TimeInterval, handle: @escaping (HTTPRequest) -> Int) {
         self.nw = nw
+        self.deadline = deadline
         self.handle = handle
     }
 
@@ -134,7 +156,7 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
             }
         }
         nw.start(queue: .main)
-        armIdle()
+        armDeadline()
         receive()
     }
 
@@ -148,11 +170,10 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
         cb?()
     }
 
-    private func armIdle() {
-        idle?.cancel()
+    private func armDeadline() {
         let w = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.close() } }
         idle = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.idleSeconds, execute: w)
+        DispatchQueue.main.asyncAfter(deadline: .now() + deadline, execute: w)
     }
 
     private func receive() {
@@ -164,10 +185,7 @@ public struct ClaudeListenerError: Error, Equatable { public let message: String
                 case .request(let r): self.respond(self.handle(r))
                 case .failure(let status): self.respond(status)
                 case .needMore:
-                    if error != nil || isComplete { self.close() } else {
-                        self.armIdle()
-                        self.receive()
-                    }
+                    if error != nil || isComplete { self.close() } else { self.receive() }
                 }
             }
         }
