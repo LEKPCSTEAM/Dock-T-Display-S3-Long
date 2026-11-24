@@ -47,7 +47,9 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 
 ### Claude Code
 
-ต้อง Install integration จากเมนูแอป Mac ก่อน (ดู `mac/LongDeck/README.md`) แอปจะเพิ่ม command hook 9 event (รวม `PostToolUseFailure`) ลง `~/.claude/settings.json` ซึ่งเรียก `~/Library/Application Support/LongDeck/hook.sh` script นี้ส่ง event ให้แอปแบบ background ไม่พิมพ์อะไรออกมา และ exit 0 เสมอ ถ้าแอปไม่ได้เปิด Claude Code ก็ทำงานปกติ ไม่มี hook error หลัง Install และหลัง Uninstall ให้ restart session ของ Claude Code ที่เปิดค้างไว้
+ต้อง Install integration จากเมนูแอป Mac ก่อน (ดู `mac/LongDeck/README.md`) แอปจะเพิ่ม command hook 9 event (รวม `PostToolUseFailure`) ลง `~/.claude/settings.json` ซึ่งเรียก `~/Library/Application Support/LongDeck/hook.sh` script นี้ส่ง event ให้แอป (รอไม่เกิน 0.5 วินาที) ไม่พิมพ์อะไรออกมา และ exit 0 เสมอ ถ้าแอปไม่ได้เปิด Claude Code ก็ทำงานปกติและไม่มี hook error
+
+หลัง Uninstall ให้ restart session ของ Claude Code ที่เปิดค้างไว้ ไม่งั้น session เดิมจะยังเรียก `hook.sh` ที่ถูกลบไปแล้วและขึ้น hook error (หลัง Install ก็ต้อง restart เพื่อให้ session โหลด hook)
 
 หน้า `Claude` มี 2 widget
 

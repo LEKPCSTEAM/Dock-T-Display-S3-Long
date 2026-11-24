@@ -36,12 +36,14 @@ private let refusedURL = "http://127.0.0.1:9/statusline"
     @Test func scriptLayout() {
         let s = StatusLineWrapper.script(previousCommand: "cat", url: "http://x/y", token: "tok")
         let lines = s.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        #expect(lines.count == 5)
+        #expect(lines.count == 7)
         #expect(lines[0] == "#!/bin/sh")
         #expect(lines[1] == "in=$(cat)")
-        #expect(lines[2] == "printf '%s' \"$in\" | '/usr/bin/curl' -s -o /dev/null --max-time 0.2 -X POST -H 'Content-Type: application/json' -H 'X-LongDeck-Token: tok' -H \"X-Tmux-Pane: ${TMUX_PANE:-}\" --data-binary @- 'http://x/y' >/dev/null 2>&1 &")
-        #expect(lines[3] == "printf '%s' \"$in\" | /bin/sh -c 'cat'")
-        #expect(lines[4] == "")
+        #expect(lines[2] == "printf '%s' \"$in\" | '/usr/bin/curl' -s -o /dev/null --max-time 0.2 -X POST -H 'Content-Type: application/json' -H 'Expect:' -H @/dev/fd/3 -H \"X-Tmux-Pane: ${TMUX_PANE:-}\" --data-binary @- 'http://x/y' >/dev/null 2>&1 3<<'LONGDECK_TOKEN' &")
+        #expect(lines[3] == "X-LongDeck-Token: tok")
+        #expect(lines[4] == "LONGDECK_TOKEN")
+        #expect(lines[5] == "printf '%s' \"$in\" | /bin/sh -c 'cat'")
+        #expect(lines[6] == "")
     }
 
     @Test func shellQuoteEscapesSingleQuote() {
@@ -81,8 +83,10 @@ private let refusedURL = "http://127.0.0.1:9/statusline"
         let dir = try tempDir()
         let fake = dir.appendingPathComponent("fakecurl")
         let args = dir.appendingPathComponent("args.txt")
+        let headers = dir.appendingPathComponent("headers.txt")
         let body = dir.appendingPathComponent("body.txt")
-        let src = "#!/bin/sh\nprintf '%s\\n' \"$@\" > \(StatusLineWrapper.shellQuote(args.path))\ncat > \(StatusLineWrapper.shellQuote(body.path))\n"
+        let src = "#!/bin/sh\nprintf '%s\\n' \"$@\" > \(StatusLineWrapper.shellQuote(args.path))\n"
+            + "cat /dev/fd/3 > \(StatusLineWrapper.shellQuote(headers.path))\ncat > \(StatusLineWrapper.shellQuote(body.path))\n"
         try src.write(to: fake, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fake.path)
         let input = "{\"model\":\"x\"}"
@@ -99,7 +103,10 @@ private let refusedURL = "http://127.0.0.1:9/statusline"
         let list = argText.split(separator: "\n").map(String.init)
         #expect(list.contains("0.2"))
         #expect(list.contains("--max-time"))
-        #expect(list.contains("X-LongDeck-Token: tok123"))
+        #expect(list.contains("Expect:"))
+        #expect(list.contains("@/dev/fd/3"))
+        #expect(!list.contains { $0.contains("tok123") })
+        #expect((try? String(contentsOf: headers, encoding: .utf8)) == "X-LongDeck-Token: tok123\n")
         #expect(list.contains("X-Tmux-Pane: %99"))
         #expect(list.contains(refusedURL))
         #expect(bodyText == input)
