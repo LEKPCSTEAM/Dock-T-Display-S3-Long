@@ -20,9 +20,10 @@
 #define OUT_QUEUE_LEN  8
 
 struct OutMsg {
-    uint8_t kind;  // 0 = press, 1 = page
+    uint8_t kind;  // 0 = press, 1 = page, 2 = slider
     bool    long_press;
     int8_t  index;
+    uint8_t value;
     char    id[16];
 };
 
@@ -60,6 +61,17 @@ static bool                       s_snap_has_layout;
 static uint8_t                    s_snap_dirty[DECK_MAX_FACES / 8];
 static bool                       s_snap_pair_show;
 static uint32_t                   s_snap_pair_code;
+static DeckStats                  s_live_stats;
+static DeckHistory                s_live_hist;
+static DeckVolume                 s_live_volume;
+static bool                       s_live_stats_ok;
+static bool                       s_live_volume_ok;
+static uint32_t                   s_live_version;
+static uint32_t                   s_stats_last_ms;
+static int8_t                     s_last_page = -1;
+static bool                       s_had_ready;
+static DeckSliderGate             s_gate;
+static char                       s_slider_id[16];
 
 static void lock()
 {
@@ -165,6 +177,37 @@ static void on_face(void *, const DeckFaceChunk *c)
 
 static void on_message(void *, const char *type, const char *body, size_t body_len)
 {
+    if (strcmp(type, "stats") == 0) {
+        DeckStats st;
+        if (!deck_stats_parse(body, body_len, &st)) {
+            Serial.println("[deck] stats ignored");
+            return;
+        }
+        uint32_t now = millis();
+        lock();
+        bool resumed = s_stats_last_ms != 0 && now - s_stats_last_ms >= 3000;
+        s_stats_last_ms = now ? now : 1;
+        s_live_stats    = st;
+        deck_history_push(&s_live_hist, &st);
+        s_live_stats_ok = true;
+        s_live_version++;
+        unlock();
+        if (resumed) Serial.println("[deck] stats resumed");
+        return;
+    }
+    if (strcmp(type, "volume") == 0) {
+        DeckVolume vol;
+        if (!deck_volume_parse(body, body_len, &vol)) {
+            Serial.println("[deck] volume ignored");
+            return;
+        }
+        lock();
+        s_live_volume    = vol;
+        s_live_volume_ok = true;
+        s_live_version++;
+        unlock();
+        return;
+    }
     if (strcmp(type, "layout") != 0) return;
     char err[48];
     if (!deck_layout_parse(body, body_len, &s_parse_tmp, err, sizeof(err))) {
@@ -231,6 +274,11 @@ static void check_became_ready(uint8_t num)
     JsonDocument d;
     d["hash"] = cache_complete() ? s_snap_layout.hash : "";
     send_sealed(num, "hello_state", to_json(d));
+    JsonDocument pg;
+    lock();
+    pg["index"] = s_last_page;
+    unlock();
+    send_sealed(num, "page", to_json(pg));
     Serial.printf("[deck] slot %u ready\n", num);
 }
 
@@ -285,6 +333,11 @@ static void drain_queue()
     OutMsg m;
     while (s_queue && xQueueReceive(s_queue, &m, 0) == pdTRUE) {
         if (active >= SLOTS) continue;
+        if (m.kind == 2) {
+            char body[64];
+            if (deck_slider_body(m.id, m.value, body, sizeof(body))) send_sealed(active, "slider", body);
+            continue;
+        }
         JsonDocument d;
         if (m.kind == 0) {
             d["id"]   = m.id;
@@ -296,8 +349,29 @@ static void drain_queue()
     }
 }
 
+static void queue_slider(const char *id, uint8_t value)
+{
+    OutMsg m = {};
+    m.kind  = 2;
+    m.value = value;
+    strlcpy(m.id, id, sizeof(m.id));
+    xQueueSend(s_queue, &m, 0);
+}
+
+static void poll_slider()
+{
+    int  out;
+    char id[16];
+    lock();
+    bool send = deck_slider_poll(&s_gate, millis(), &out);
+    strlcpy(id, s_slider_id, sizeof(id));
+    unlock();
+    if (send && s_queue) queue_slider(id, (uint8_t)out);
+}
+
 void deck_net_begin()
 {
+    deck_slider_reset(&s_gate);
     uint8_t mac[6] = {0};
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
     snprintf(s_board_id, sizeof(s_board_id), "%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
@@ -342,9 +416,19 @@ void deck_net_loop()
         s_sess[i]->tick();
         if (s_sess[i]->ready()) any_ready = true;
     }
+    poll_slider();
     drain_queue();
     lock();
     s_snap_ready = any_ready;
+    if (!any_ready && s_had_ready) {
+        s_live_stats_ok  = false;
+        s_live_volume_ok = false;
+        s_stats_last_ms  = 0;
+        deck_history_clear(&s_live_hist);
+        deck_slider_reset(&s_gate);
+        s_live_version++;
+    }
+    s_had_ready = any_ready;
     unlock();
 }
 
@@ -408,11 +492,56 @@ void deck_net_press(const char *id, bool long_press)
 
 void deck_net_page(int8_t deck_index)
 {
+    lock();
+    s_last_page = deck_index;
+    unlock();
     if (!s_queue || !deck_net_ready()) return;
     OutMsg m = {};
     m.kind  = 1;
     m.index = deck_index;
     xQueueSend(s_queue, &m, 0);
+}
+
+uint32_t deck_net_live_version()
+{
+    lock();
+    uint32_t v = s_live_version;
+    unlock();
+    return v;
+}
+
+bool deck_net_stats(DeckStats *stats, DeckHistory *hist)
+{
+    if (!stats) return false;
+    lock();
+    bool ok = s_live_stats_ok;
+    if (ok) {
+        *stats = s_live_stats;
+        if (hist) *hist = s_live_hist;
+    }
+    unlock();
+    return ok;
+}
+
+bool deck_net_volume(DeckVolume *out)
+{
+    if (!out) return false;
+    lock();
+    bool ok = s_live_volume_ok;
+    if (ok) *out = s_live_volume;
+    unlock();
+    return ok;
+}
+
+void deck_net_slider(const char *id, uint8_t value)
+{
+    if (!s_queue || !id || !deck_net_ready()) return;
+    int out;
+    lock();
+    strlcpy(s_slider_id, id, sizeof(s_slider_id));
+    bool send = deck_slider_offer(&s_gate, millis(), value, &out);
+    unlock();
+    if (send) queue_slider(id, (uint8_t)out);
 }
 
 void deck_net_forget()
