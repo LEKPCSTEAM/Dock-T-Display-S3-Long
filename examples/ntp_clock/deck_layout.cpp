@@ -25,6 +25,24 @@ static bool get_u8(JsonVariantConst v, int lo, int hi, uint8_t *out) {
   return true;
 }
 
+static int name_index(const char *name, const char *const *names, int n) {
+  if (!name) return -1;
+  for (int i = 0; i < n; i++)
+    if (strcmp(name, names[i]) == 0) return i;
+  return -1;
+}
+
+int deck_metric_from_name(const char *name) {
+  static const char *const names[DM_COUNT] = {"cpu",      "ram",     "gpu",     "temp",    "net_down",
+                                              "net_up",   "disk_free", "disk_io", "battery"};
+  return name_index(name, names, DM_COUNT);
+}
+
+int deck_style_from_name(const char *name) {
+  static const char *const names[DS_COUNT] = {"bar", "number", "sparkline"};
+  return name_index(name, names, DS_COUNT);
+}
+
 static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char *err, size_t err_len) {
   const char *id = jw["id"] | (const char *)nullptr;
   if (!id || !*id) return fail(err, err_len, "widget id missing");
@@ -33,7 +51,19 @@ static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char 
   strcpy(w->id, id);
 
   const char *type = jw["type"] | "";
-  w->type = strcmp(type, "key") == 0 ? DW_KEY : DW_UNKNOWN;
+  if (strcmp(type, "key") == 0) w->type = DW_KEY;
+  else if (strcmp(type, "volume") == 0) w->type = DW_VOLUME;
+  else if (strcmp(type, "clock") == 0) w->type = DW_CLOCK;
+  else if (strcmp(type, "stat") == 0) {
+    const int metric = deck_metric_from_name(jw["metric"] | (const char *)nullptr);
+    const int style = deck_style_from_name(jw["style"] | (const char *)nullptr);
+    if (metric < 0 || style < 0) w->type = DW_UNKNOWN;
+    else {
+      w->type = DW_STAT;
+      w->metric = (uint8_t)metric;
+      w->style = (uint8_t)style;
+    }
+  } else w->type = DW_UNKNOWN;
 
   if (!get_u8(jw["col"], 0, DECK_COLS - 1, &w->col) || !get_u8(jw["row"], 0, DECK_ROWS - 1, &w->row) ||
       !get_u8(jw["w"], 1, DECK_COLS, &w->w) || !get_u8(jw["h"], 1, DECK_ROWS, &w->h))
@@ -45,7 +75,7 @@ static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char 
     if (face < 1 || face > DECK_MAX_FACES) return fail(err, err_len, "face out of range");
     w->face = (uint16_t)face;
   }
-  w->has_long = jw["long"] | false;
+  if (w->type == DW_KEY) w->has_long = jw["long"] | false;
 
   for (int r = w->row; r < w->row + w->h; r++)
     for (int c = w->col; c < w->col + w->w; c++) {

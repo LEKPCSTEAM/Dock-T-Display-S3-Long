@@ -176,8 +176,96 @@ void test_out_unchanged_on_error() {
   TEST_ASSERT_EQUAL_UINT16(5, l.pages[0].widgets[0].face);
 }
 
+static const char *L1 =
+    "{\"hash\":\"0123456789abcdef\",\"pages\":[{\"name\":\"Mac\",\"widgets\":[{\"col\":7,\"face\":1,\"h\":1,\"id\":\"k1\","
+    "\"long\":false,\"row\":0,\"type\":\"key\",\"w\":1},{\"col\":0,\"face\":0,\"h\":1,\"id\":\"cpu\",\"metric\":\"cpu\","
+    "\"row\":0,\"style\":\"sparkline\",\"type\":\"stat\",\"w\":2},{\"col\":2,\"face\":0,\"h\":1,\"id\":\"vol\",\"row\":0,"
+    "\"type\":\"volume\",\"w\":3},{\"col\":5,\"face\":0,\"h\":1,\"id\":\"clk\",\"row\":0,\"type\":\"clock\",\"w\":2},"
+    "{\"col\":0,\"face\":0,\"h\":1,\"id\":\"tmp\",\"metric\":\"temp\",\"row\":1,\"style\":\"number\",\"type\":\"stat\","
+    "\"w\":1}]}]}";
+
+static std::string stat(const char *id, int col, int row, int w, const char *metric, const char *style) {
+  std::string s = std::string("{\"id\":\"") + id + "\",\"type\":\"stat\",\"col\":" + std::to_string(col) +
+                  ",\"row\":" + std::to_string(row) + ",\"w\":" + std::to_string(w) + ",\"h\":1";
+  if (metric) s += std::string(",\"metric\":\"") + metric + "\"";
+  if (style) s += std::string(",\"style\":\"") + style + "\"";
+  return s + "}";
+}
+
+void test_parse_live_example() {
+  DeckLayout l;
+  char err[64];
+  TEST_ASSERT_TRUE(deck_layout_parse(L1, strlen(L1), &l, err, sizeof err));
+  TEST_ASSERT_EQUAL_UINT8(5, l.pages[0].count);
+  const DeckWidget *w = l.pages[0].widgets;
+  TEST_ASSERT_EQUAL_UINT8(DW_KEY, w[0].type);
+  TEST_ASSERT_EQUAL_UINT16(1, w[0].face);
+  TEST_ASSERT_EQUAL_UINT8(DW_STAT, w[1].type);
+  TEST_ASSERT_EQUAL_UINT8(DM_CPU, w[1].metric);
+  TEST_ASSERT_EQUAL_UINT8(DS_SPARKLINE, w[1].style);
+  TEST_ASSERT_EQUAL_UINT16(0, w[1].face);
+  TEST_ASSERT_EQUAL_UINT8(DW_VOLUME, w[2].type);
+  TEST_ASSERT_EQUAL_UINT8(DW_CLOCK, w[3].type);
+  TEST_ASSERT_EQUAL_UINT8(DW_STAT, w[4].type);
+  TEST_ASSERT_EQUAL_UINT8(DM_TEMP, w[4].metric);
+  TEST_ASSERT_EQUAL_UINT8(DS_NUMBER, w[4].style);
+}
+
+void test_every_metric_and_style_name() {
+  const char *m[] = {"cpu", "ram", "gpu", "temp", "net_down", "net_up", "disk_free", "disk_io", "battery"};
+  for (int i = 0; i < 9; i++) TEST_ASSERT_EQUAL_INT(i, deck_metric_from_name(m[i]));
+  TEST_ASSERT_EQUAL_INT(-1, deck_metric_from_name("fan"));
+  TEST_ASSERT_EQUAL_INT(-1, deck_metric_from_name(""));
+  TEST_ASSERT_EQUAL_INT(DS_BAR, deck_style_from_name("bar"));
+  TEST_ASSERT_EQUAL_INT(DS_NUMBER, deck_style_from_name("number"));
+  TEST_ASSERT_EQUAL_INT(DS_SPARKLINE, deck_style_from_name("sparkline"));
+  TEST_ASSERT_EQUAL_INT(-1, deck_style_from_name("fan"));
+  TEST_ASSERT_EQUAL_INT(-1, deck_style_from_name(""));
+}
+
+void test_stat_unknown_metric_is_placeholder() {
+  DeckLayout l;
+  char err[64];
+  TEST_ASSERT_TRUE(parse(layout(page("P", stat("s", 0, 0, 2, "fan", "bar"))), &l, err));
+  TEST_ASSERT_EQUAL_UINT8(DW_UNKNOWN, l.pages[0].widgets[0].type);
+  expect_reject(layout(page("P", stat("s", 0, 0, 2, "fan", "bar") + "," + key("a", 1, 0, 1, 1, 1))));
+}
+
+void test_stat_missing_style_is_placeholder() {
+  DeckLayout l;
+  char err[64];
+  TEST_ASSERT_TRUE(parse(layout(page("P", stat("s", 0, 0, 2, "cpu", nullptr))), &l, err));
+  TEST_ASSERT_EQUAL_UINT8(DW_UNKNOWN, l.pages[0].widgets[0].type);
+  TEST_ASSERT_TRUE(parse(layout(page("P", stat("s", 0, 0, 2, nullptr, "bar"))), &l, err));
+  TEST_ASSERT_EQUAL_UINT8(DW_UNKNOWN, l.pages[0].widgets[0].type);
+}
+
+void test_live_widget_face_and_long_ignored() {
+  DeckLayout l;
+  char err[64];
+  TEST_ASSERT_TRUE(parse(layout(page("P", key("v", 0, 0, 2, 1, 7, "volume", true))), &l, err));
+  TEST_ASSERT_EQUAL_UINT8(DW_VOLUME, l.pages[0].widgets[0].type);
+  TEST_ASSERT_EQUAL_UINT16(0, l.pages[0].widgets[0].face);
+  TEST_ASSERT_FALSE(l.pages[0].widgets[0].has_long);
+  TEST_ASSERT_TRUE(parse(layout(page("P", key("g", 0, 0, 2, 1, 7, "gauge", true))), &l, err));
+  TEST_ASSERT_EQUAL_UINT16(0, l.pages[0].widgets[0].face);
+  TEST_ASSERT_FALSE(l.pages[0].widgets[0].has_long);
+}
+
+void test_live_widgets_respect_grid() {
+  expect_reject(layout(page("P", key("v", 7, 0, 2, 1, 0, "volume"))));
+  expect_reject(layout(page("P", key("c", 0, 0, 2, 1, 0, "clock") + "," + key("a", 1, 0, 1, 1, 1))));
+  expect_reject(layout(page("P", key("a", 0, 0, 1, 1, 1)) + "," + page("Q", stat("a", 0, 0, 1, "cpu", "bar"))));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_parse_live_example);
+  RUN_TEST(test_every_metric_and_style_name);
+  RUN_TEST(test_stat_unknown_metric_is_placeholder);
+  RUN_TEST(test_stat_missing_style_is_placeholder);
+  RUN_TEST(test_live_widget_face_and_long_ignored);
+  RUN_TEST(test_live_widgets_respect_grid);
   RUN_TEST(test_parse_sample);
   RUN_TEST(test_reject_out_of_grid);
   RUN_TEST(test_reject_overlap);
