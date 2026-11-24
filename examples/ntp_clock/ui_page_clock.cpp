@@ -2,22 +2,13 @@
 #include <string.h>
 #include "ui_internal.h"
 
-#define CELL_W        84
-#define COLON_W       28
-#define CELL_Y        28
-#define TIME_X        16
+#include "eez/gen/screens.h"
+
 #define ROLL_MS       350
 #define ROLL_TRAVEL   48
 #define BOUNCE_MS     700
 #define BOUNCE_HEIGHT 18
 #define SWEEP_MS      1400
-#define BAR_H         5
-#define PANEL_X       462
-#define PANEL_Y       8
-#define PANEL_W       170
-#define PANEL_H       159
-#define PANEL_PAD_L   16
-#define PANEL_INNER_W 146
 #define COLON_DIM_OPA 70
 #define NIGHT_DIGIT   0x9A2A18
 #define CITY_UNSET    "\x01"  // never equals a real city, so the hint always refreshes
@@ -31,7 +22,6 @@ struct Digit {
 
 static const char *const THEME_NAME[THEME_COUNT] = {"สีประจำวัน", "สีรุ้ง", "ขาวเรียบ"};
 
-static lv_obj_t *time_area;
 static Digit     digits[4];
 static lv_obj_t *colon;
 static lv_obj_t *placeholder;
@@ -184,119 +174,52 @@ static void tap_cb(lv_event_t *)
     ui_toast(THEME_NAME[s.theme]);
 }
 
-static lv_obj_t *make_row(lv_obj_t *parent, lv_flex_flow_t flow)
+// The EEZ rows are absolute, so redo the old flex row spacing.
+static void align_icon_row()
 {
-    lv_obj_t *row = lv_obj_create(parent);
-    ui_strip_obj(row);
-    lv_obj_clear_flag(row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_size(row, PANEL_INNER_W, LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(row, flow);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    return row;
+    lv_obj_align_to(sat_icon, wifi_icon, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
 }
 
-static lv_obj_t *scrolling_label(lv_obj_t *parent, const lv_font_t *font, lv_color_t color, lv_coord_t w)
+static void align_wx_row()
 {
-    lv_obj_t *l = ui_label(parent, font, color, "");
-    lv_label_set_long_mode(l, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_width(l, w);
-    return l;
+    lv_obj_align_to(wx_temp, wx_icon, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
+    lv_obj_align_to(wx_text, wx_temp, LV_ALIGN_OUT_RIGHT_MID, 6, 0);
 }
 
-void page_clock_create(lv_obj_t *tile)
+void page_clock_create(lv_obj_t *)
 {
-    time_area = lv_obj_create(tile);
-    ui_strip_obj(time_area);
-    lv_obj_set_pos(time_area, 0, 0);
-    lv_obj_set_size(time_area, PANEL_X - 4, SCREEN_H - BAR_H);
-    lv_obj_add_event_cb(time_area, tap_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(objects.cont_clock_time, tap_cb, LV_EVENT_CLICKED, NULL);
 
-    lv_coord_t x = TIME_X;
-    for (int i = 0; i < 4; i++) {
-        Digit *d = &digits[i];
-        d->shown = -2;
-        d->cell  = lv_obj_create(time_area);
-        ui_strip_obj(d->cell);
-        lv_obj_clear_flag(d->cell, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_pos(d->cell, x, CELL_Y);
-        lv_obj_set_size(d->cell, CELL_W, ui_font_digits_128.line_height);
-        d->old = ui_label(d->cell, &ui_font_digits_128, COLOR_TEXT, "");
-        d->cur = ui_label(d->cell, &ui_font_digits_128, COLOR_TEXT, "");
-        lv_obj_t *pair[2] = {d->old, d->cur};
-        for (int k = 0; k < 2; k++) {
-            lv_obj_set_width(pair[k], CELL_W);
-            lv_obj_set_style_text_align(pair[k], LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_set_pos(pair[k], 0, 0);
-        }
-        lv_obj_add_flag(d->old, LV_OBJ_FLAG_HIDDEN);
-        x += CELL_W;
-        if (i == 1) {
-            colon = ui_label(time_area, &ui_font_digits_128, COLOR_TEXT, ":");
-            lv_obj_set_width(colon, COLON_W);
-            lv_obj_set_style_text_align(colon, LV_TEXT_ALIGN_CENTER, 0);
-            lv_obj_set_pos(colon, x, CELL_Y);
-            x += COLON_W;
-        }
+    digits[0] = {objects.cont_clock_d0, objects.label_clock_d0_b, objects.label_clock_d0_a, -2};
+    digits[1] = {objects.cont_clock_d1, objects.label_clock_d1_b, objects.label_clock_d1_a, -2};
+    digits[2] = {objects.cont_clock_d2, objects.label_clock_d2_b, objects.label_clock_d2_a, -2};
+    digits[3] = {objects.cont_clock_d3, objects.label_clock_d3_b, objects.label_clock_d3_a, -2};
+    colon       = objects.label_clock_colon;
+    placeholder = objects.label_clock_placeholder;
+    sec_label   = objects.label_clock_sec;
+    hint_label  = objects.label_clock_hint;
+    stripe      = objects.cont_clock_stripe;
+    wifi_icon   = objects.label_clock_wifi;
+    sat_icon    = objects.label_clock_sat;
+    day_label   = objects.label_clock_day;
+    date_label  = objects.label_clock_date;
+    wx_icon     = objects.label_clock_wx_icon;
+    wx_temp     = objects.label_clock_wx_temp;
+    wx_text     = objects.label_clock_wx_text;
+    bar         = objects.bar_clock_seconds;
+
+    // Swap EEZ sample texts for the old create-time state.
+    lv_obj_t *const blank[] = {digits[0].cur, digits[0].old, digits[1].cur, digits[1].old,
+                               digits[2].cur, digits[2].old, digits[3].cur, digits[3].old,
+                               hint_label, day_label, date_label, wx_icon, wx_temp, wx_text};
+    for (lv_obj_t *label : blank) {
+        lv_label_set_text(label, "");
     }
-
-    placeholder = ui_label(time_area, &ui_font_digits_56, COLOR_TEXT_DIM, "--:--");
-    lv_obj_set_pos(placeholder, TIME_X, CELL_Y + (ui_font_digits_128.line_height - ui_font_digits_56.line_height) / 2);
-
-    lv_coord_t base128 = ui_font_digits_128.line_height - ui_font_digits_128.base_line;
-    lv_coord_t base56  = ui_font_digits_56.line_height - ui_font_digits_56.base_line;
-    lv_coord_t sec_y   = CELL_Y + base128 - base56;
-    sec_label = ui_label(time_area, &ui_font_digits_56, COLOR_TEXT, "00");
-    lv_obj_set_pos(sec_label, x + 2, sec_y);
-
-    hint_label = ui_label(time_area, &ui_font_th_16, COLOR_TEXT_DIM, "");
-    lv_obj_set_pos(hint_label, TIME_X + 4, CELL_Y + ui_font_digits_128.line_height + 10);
-
-    lv_obj_t *panel = lv_obj_create(tile);
-    ui_strip_obj(panel);
-    lv_obj_clear_flag(panel, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_pos(panel, PANEL_X, PANEL_Y);
-    lv_obj_set_size(panel, PANEL_W, PANEL_H);
-    lv_obj_set_style_bg_color(panel, COLOR_PANEL, 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(panel, 16, 0);
-    lv_obj_set_style_pad_left(panel, PANEL_PAD_L, 0);
-    lv_obj_set_style_pad_top(panel, 8, 0);
-    lv_obj_set_style_pad_row(panel, 4, 0);
-    lv_obj_set_flex_flow(panel, LV_FLEX_FLOW_COLUMN);
-
-    stripe = lv_obj_create(panel);
-    ui_strip_obj(stripe);
-    lv_obj_add_flag(stripe, LV_OBJ_FLAG_FLOATING);
-    lv_obj_clear_flag(stripe, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_pos(stripe, 7 - PANEL_PAD_L, 6);  // floating pos is relative to the padded content box
-    lv_obj_set_size(stripe, 3, PANEL_H - 28);
-    lv_obj_set_style_radius(stripe, 2, 0);
-    lv_obj_set_style_bg_opa(stripe, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(stripe, COLOR_TEXT_DIM, 0);
-
-    lv_obj_t *icons = make_row(panel, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(icons, 12, 0);
-    wifi_icon = ui_label(icons, &ui_font_th_16, COLOR_WARN, LV_SYMBOL_WIFI);
-    sat_icon  = ui_label(icons, &ui_font_th_16, COLOR_TEXT_DIM, SYM_SATELLITE);
-
-    day_label  = scrolling_label(panel, &ui_font_th_32, COLOR_TEXT, PANEL_INNER_W);
-    date_label = scrolling_label(panel, &ui_font_th_22, COLOR_TEXT, PANEL_INNER_W);
-
-    lv_obj_t *wx = make_row(panel, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_column(wx, 6, 0);
-    wx_icon = ui_label(wx, &ui_font_th_22, COLOR_TEXT, "");
-    wx_temp = ui_label(wx, &ui_font_th_22, COLOR_TEXT, "");
-    wx_text = scrolling_label(wx, &ui_font_th_16, COLOR_TEXT_DIM, 70);
-
-    bar = lv_bar_create(tile);
-    lv_obj_remove_style_all(bar);
-    lv_obj_set_pos(bar, 0, SCREEN_H - BAR_H);
-    lv_obj_set_size(bar, SCREEN_W, BAR_H);
-    lv_bar_set_range(bar, 0, SCREEN_W);
-    lv_obj_set_style_bg_color(bar, COLOR_PANEL, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(bar, COLOR_TEXT_DIM, LV_PART_INDICATOR);
+    lv_label_set_text(sec_label, "00");
+    set_hidden(placeholder, false);
+    align_icon_row();
+    align_wx_row();
+    lv_bar_set_value(bar, 0, LV_ANIM_OFF);
 }
 
 static void apply_accent(lv_color_t c)
@@ -362,6 +285,7 @@ static void update_net_icons(const UiTick *t)
         break;
     }
     lv_obj_set_style_text_color(sat_icon, t->net->time_synced ? COLOR_OK : COLOR_TEXT_DIM, 0);
+    align_icon_row();
 }
 
 static void update_weather(const UiTick *t)
@@ -376,6 +300,7 @@ static void update_weather(const UiTick *t)
         lv_label_set_text(wx_icon, "");
         lv_label_set_text(wx_temp, "—");
         lv_label_set_text(wx_text, "");
+        align_wx_row();
         return;
     }
     char buf[16];
@@ -383,6 +308,7 @@ static void update_weather(const UiTick *t)
     lv_label_set_text(wx_icon, ui_weather_icon(w->code, w->is_day));
     lv_label_set_text(wx_temp, buf);
     lv_label_set_text(wx_text, ui_weather_text(w->code));
+    align_wx_row();
 }
 
 static void update_info(const UiTick *t)
