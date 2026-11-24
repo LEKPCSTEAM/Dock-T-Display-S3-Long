@@ -36,7 +36,7 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 แอป menu-bar บน Mac จับคู่กับบอร์ดผ่าน WiFi แล้วแสดงปุ่มแบบ Stream Deck บนจอ
 
 1. Build แอป: `cd mac/LongDeck && ./scripts/bundle.sh` แล้วเปิด `mac/LongDeck/build/LongDeck.app`
-2. Config อยู่ที่ `~/Library/Application Support/LongDeck/config.json` (สร้างหน้า Dev ตัวอย่างให้ตอนรันครั้งแรก) เปิดเมนู "Edit layout…" ลาก widget วางบน grid 8x2 แล้วกด Save เพื่อ push ขึ้นบอร์ด (แก้ไฟล์ด้วยมือก็ยังได้ แอปอ่านใหม่เอง) — ถ้า config ผิดจะแสดง error และไม่ push; layout frame ต้องไม่เกิน 15360 bytes ซึ่ง editor จะเตือนก่อน Save
+2. Config อยู่ที่ `~/Library/Application Support/LongDeck/config.json` (สร้างหน้า Dev ตัวอย่างให้ตอนรันครั้งแรก) เปิดเมนู "Edit layout…" ลาก widget วางบน grid 8x2 แล้วกด Save เพื่อ push ขึ้นบอร์ด (แก้ไฟล์ด้วยมือก็ยังได้ แอปอ่านใหม่เอง) — ถ้า config ผิดจะแสดง error และไม่ push; layout frame ต้องไม่เกิน 15360 bytes ถ้าเกิน editor จะปิดปุ่ม Save (disabled) และแสดง error ใน issue list จนกว่าจะแก้
 3. จับคู่: เมนู "Pair with board…" เลือกบอร์ด แล้วพิมพ์รหัส 6 หลักที่แสดงบนจอบอร์ด (ใช้ได้ 60 วินาที)
 4. ปุ่ม hotkey / media / volume / type-text ต้องอนุญาต Accessibility — เมนู "Grant Accessibility…"
 5. หน้า deck ต่อท้าย นาฬิกา → ปฏิทิน → Focus → System ได้สูงสุด 8 หน้า (grid 8x2) ถ้าแอปไม่ได้เชื่อมต่อจะขึ้นป้าย "Mac offline" และปุ่มจางลง

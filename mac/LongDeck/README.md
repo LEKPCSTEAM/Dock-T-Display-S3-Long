@@ -30,7 +30,9 @@ Menu "Edit layout…" opens the editor window; the Dock icon shows while it is o
 
 The inspector edits the label, icon (none, app or SF Symbol), background, optional text colour (it also tints SF Symbols), action and long-press action. The app picker lists `/Applications`, `/System/Applications`, `~/Applications` and `Other…`, and choosing an app sets the key icon. The hotkey recorder: click the field, press the combo, Esc cancels. ⌘Z / ⇧⌘Z undo and redo.
 
-⌘S saves. Errors (empty action values, bad colours, more than 8 pages, a layout over 15360 bytes) show as issue rows, outline the widget in red and block saving; click a row to select the widget. A saved layout goes to the board now, or on its next connect if it is offline. Closing the window or quitting with unsaved changes asks Save / Don't Save / Cancel. While the editor has unsaved changes, outside edits of `config.json` are ignored.
+⌘S saves. Errors (empty action values, bad colours, more than 8 pages, a layout over 15360 bytes) show as issue rows and block saving; widget errors also outline the widget in red (click a row to select it), while page-count and layout-size errors appear only in the issue list. A saved layout goes to the board now, or on its next connect if it is offline. Closing the window or quitting with unsaved changes asks Save / Don't Save / Cancel.
+
+If `config.json` changes on disk and the editor has no unsaved edits, it reloads silently. With unsaved edits, a banner says the file changed, with a Reload button (discards your edits and loads the file). While the banner is up the first ⌘S asks you to save again to overwrite; the second overwrites. The close and quit prompt then adds "config.json changed on disk — Save will overwrite it", and its Save overwrites in one step.
 
 `foreground` is an optional key field (text colour, `#RRGGBB`); it is omitted when unset, so older configs are unchanged:
 
