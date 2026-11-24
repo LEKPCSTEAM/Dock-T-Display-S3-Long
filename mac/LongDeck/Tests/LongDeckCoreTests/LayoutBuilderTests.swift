@@ -76,6 +76,10 @@ func liveConfig() -> DeckConfig {
         #expect(built.faces.isEmpty)
     }
 
+    @Test func layoutHashUnchangedForSample() {
+        #expect(LayoutBuilder.build(SampleConfig.dev, render: stubRender).hash == "dd144a678155aef2")
+    }
+
     @Test func liveWidgetsChangeHash() {
         var withClock = liveConfig()
         withClock.pages[0].live.append(

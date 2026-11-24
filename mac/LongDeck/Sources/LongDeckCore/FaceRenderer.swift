@@ -49,9 +49,10 @@ public enum FaceRenderer {
         NSGraphicsContext.current = gfx
         defer { NSGraphicsContext.restoreGraphicsState() }
 
+        let foreground = key.foreground.flatMap(HexColor.nsColor)
         let labelBand: CGFloat = 22
         let iconArea = CGRect(x: 0, y: labelBand, width: CGFloat(width), height: CGFloat(height) * 0.6)
-        if let image = icon(key.icon) {
+        if let image = icon(key.icon, tint: foreground ?? .white) {
             let side = min(iconArea.width, iconArea.height) - 8
             let target = CGRect(x: iconArea.midX - side / 2, y: iconArea.midY - side / 2,
                                 width: side, height: side)
@@ -63,7 +64,7 @@ public enum FaceRenderer {
         style.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 13),
-            .foregroundColor: NSColor.white,
+            .foregroundColor: foreground ?? NSColor.white,
             .paragraphStyle: style,
         ]
         let textRect = CGRect(x: 3, y: 3, width: CGFloat(width) - 6, height: labelBand - 3)
@@ -71,7 +72,7 @@ public enum FaceRenderer {
                                      attributes: attrs)
     }
 
-    private static func icon(_ ref: IconRef?) -> NSImage? {
+    private static func icon(_ ref: IconRef?, tint: NSColor) -> NSImage? {
         switch ref {
         case .app(let path):
             guard FileManager.default.fileExists(atPath: path) else { return nil }
@@ -80,7 +81,7 @@ public enum FaceRenderer {
             guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
             let config = NSImage.SymbolConfiguration(pointSize: 36, weight: .regular)
             let sized = base.withSymbolConfiguration(config) ?? base
-            return tinted(sized, .white)
+            return tinted(sized, tint)
         case nil:
             return nil
         }

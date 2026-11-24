@@ -32,6 +32,34 @@ private func tempURL() -> URL {
         #expect(try DeckConfig.load(from: url) == config)
     }
 
+    @Test func foregroundIsOptionalInJSON() throws {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        var k = key("a", 0, 0)
+        #expect(!String(decoding: try encoder.encode(k), as: UTF8.self).contains("\"foreground\""))
+        k.foreground = "#FF0000"
+        let back = try JSONDecoder().decode(KeyConfig.self, from: try encoder.encode(k))
+        #expect(back == k && back.foreground == "#FF0000")
+        let m3 = ##"{"action":{"shell":{"_0":"true"}},"background":"#333333","col":0,"h":1,"id":"a","label":"a","row":0,"w":1}"##
+        #expect(try JSONDecoder().decode(KeyConfig.self, from: Data(m3.utf8)).foreground == nil)
+    }
+
+    @Test func fileDataIsReadable() throws {
+        let data = try SampleConfig.dev.fileData()
+        let text = String(decoding: data, as: UTF8.self)
+        #expect(text.contains("\"/Applications/iTerm.app\""))
+        #expect(!text.contains("\\/"))
+        #expect(text.contains("\n  "))
+        #expect(text.hasSuffix("\n"))
+        #expect(try JSONDecoder().decode(DeckConfig.self, from: data) == SampleConfig.dev)
+    }
+
+    @Test func saveReturnsWrittenBytes() throws {
+        let url = tempURL()
+        let written = try SampleConfig.dev.save(to: url)
+        #expect(written == (try Data(contentsOf: url)))
+    }
+
     @Test func loadMissingFileReturnsSample() throws {
         let loaded = try DeckConfig.load(from: tempURL())
         #expect(loaded == SampleConfig.dev)

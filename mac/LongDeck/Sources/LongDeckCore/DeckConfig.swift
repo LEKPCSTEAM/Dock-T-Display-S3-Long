@@ -31,9 +31,11 @@ public struct KeyConfig: Codable, Equatable, Sendable {
     public var background: String
     public var action: DeckAction
     public var longAction: DeckAction?
+    public var foreground: String?
 
     public init(id: String, col: Int, row: Int, w: Int, h: Int, label: String, icon: IconRef?,
-                background: String, action: DeckAction, longAction: DeckAction?) {
+                background: String, action: DeckAction, longAction: DeckAction?,
+                foreground: String? = nil) {
         self.id = id
         self.col = col
         self.row = row
@@ -44,6 +46,7 @@ public struct KeyConfig: Codable, Equatable, Sendable {
         self.background = background
         self.action = action
         self.longAction = longAction
+        self.foreground = foreground
     }
 }
 
@@ -221,11 +224,18 @@ public struct DeckConfig: Codable, Equatable, Sendable {
         return config
     }
 
-    public func save(to url: URL) throws {
+    public func fileData() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(self) + Data("\n".utf8)
+    }
+
+    @discardableResult
+    public func save(to url: URL) throws -> Data {
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(self).write(to: url, options: .atomic)
+        let data = try fileData()
+        try data.write(to: url, options: .atomic)
+        return data
     }
 }
