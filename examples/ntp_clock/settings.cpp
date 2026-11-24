@@ -54,7 +54,7 @@ static void migrate_old_namespace()
 {
     Preferences dst;
     if (!dst.begin(NVS_NS, false)) return;
-    if (dst.isKey("ssid")) {
+    if (dst.isKey("migrated")) {
         dst.end();
         return;
     }
@@ -73,6 +73,7 @@ static void migrate_old_namespace()
         ok &= copy_str(src, dst, "city");
         ok &= copy_str(src, dst, "pass");
         ok &= copy_str(src, dst, "ssid");
+        if (ok) ok = dst.putBool("migrated", true) > 0;
         if (ok) {
             src.clear();
             Serial.println("[settings] migrated legacy NVS namespace");
