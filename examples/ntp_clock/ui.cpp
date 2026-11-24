@@ -227,6 +227,7 @@ static void tick_cb(lv_timer_t *)
     t.active = true;
 
     page_deck_update(&t);
+    ui_claude_overlay_update(&t);
     ui_pair_update(&t);
     ui_portal_update(&t);
     if (splash_open) {
