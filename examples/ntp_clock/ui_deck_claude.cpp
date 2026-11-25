@@ -301,7 +301,7 @@ static void sessions_refresh(ClaudeWidget *cw, const UiTick *t, bool live)
         }
         const DeckClaudeSession *s = rows[i];
         char right[56];
-        r->idx = i;
+        r->idx = (int)(s - snap.s);
         if (s->tmux) {
             lv_obj_add_flag(r->obj, LV_OBJ_FLAG_CLICKABLE);
         } else {

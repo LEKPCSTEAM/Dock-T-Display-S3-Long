@@ -95,7 +95,7 @@ bool deck_claude_parse(const char *json, size_t len, DeckClaude *out) {
   JsonArrayConst sessions = doc["sessions"].as<JsonArrayConst>();
   if (sessions.isNull() || !doc["usage"].is<JsonObjectConst>()) return false;
 
-  DeckClaude c;
+  DeckClaude &c = *out;
   memset(&c, 0, sizeof c);
   for (JsonVariantConst js : sessions) {
     if (c.count >= DECK_CLAUDE_MAX_SESSIONS) break;
@@ -123,7 +123,6 @@ bool deck_claude_parse(const char *json, size_t len, DeckClaude *out) {
   parse_window(doc["usage"]["five_hour"], &c.five_hour);
   parse_window(doc["usage"]["seven_day"], &c.seven_day);
   parse_prompt(doc["prompt"], &c.prompt);
-  *out = c;
   return true;
 }
 
