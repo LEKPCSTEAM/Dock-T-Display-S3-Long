@@ -54,3 +54,4 @@ int deck_metric_from_name(const char *name);  // -1 if unknown
 int deck_style_from_name(const char *name);   // -1 if unknown
 
 bool deck_layout_parse(const char *json, size_t len, DeckLayout *out, char *err, size_t err_len);
+bool deck_layout_faces_cached(const DeckLayout *l, bool (*exists)(uint16_t id));  // keys, sprite frames, hats

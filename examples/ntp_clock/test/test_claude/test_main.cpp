@@ -522,6 +522,49 @@ void test_needy_update() {
   TEST_ASSERT_FALSE(deck_claude_needy_update(nullptr, keys, &n));
 }
 
+static void tap_row(DeckClaude *c, int i, const char *id, uint8_t state) {
+  needy_row(c, i, id, state);
+  c->s[i].tmux = true;
+}
+
+void test_tap_target_follows_id() {
+  DeckClaude c;
+  memset(&c, 0, sizeof c);
+  c.count = 3;
+  tap_row(&c, 0, "a", DCS_WORKING);
+  tap_row(&c, 1, "b", DCS_WORKING);
+  tap_row(&c, 2, "c", DCS_WORKING);
+  TEST_ASSERT_EQUAL_PTR(&c.s[1], deck_claude_tap_target(&c, "b", true));
+  tap_row(&c, 0, "b", DCS_WORKING);
+  tap_row(&c, 1, "c", DCS_WORKING);
+  tap_row(&c, 2, "a", DCS_DONE);
+  TEST_ASSERT_EQUAL_PTR(&c.s[0], deck_claude_tap_target(&c, "b", true));
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, "a", true));
+  TEST_ASSERT_EQUAL_PTR(&c.s[2], deck_claude_tap_target(&c, "a", false));
+  c.s[2].tmux = false;
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, "a", false));
+  c.s[0].live = false;
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, "b", false));
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, "gone", false));
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, "", false));
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, nullptr, false));
+  TEST_ASSERT_NULL(deck_claude_tap_target(nullptr, "c", false));
+  c.count = 2;
+  TEST_ASSERT_EQUAL_PTR(&c.s[1], deck_claude_tap_target(&c, "c", true));
+  c.count = 1;
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, "c", false));
+}
+
+void test_tap_target_skips_history_twin() {
+  DeckClaude c;
+  memset(&c, 0, sizeof c);
+  c.count = 2;
+  tap_row(&c, 0, "x", DCS_DONE);
+  c.s[0].live = false;
+  tap_row(&c, 1, "x", DCS_WORKING);
+  TEST_ASSERT_EQUAL_PTR(&c.s[1], deck_claude_tap_target(&c, "x", true));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_parse_c1);
@@ -555,5 +598,7 @@ int main() {
   RUN_TEST(test_agent_step_edges);
   RUN_TEST(test_agent_step_beat_rounds_durations);
   RUN_TEST(test_needy_update);
+  RUN_TEST(test_tap_target_follows_id);
+  RUN_TEST(test_tap_target_skips_history_twin);
   return UNITY_END();
 }

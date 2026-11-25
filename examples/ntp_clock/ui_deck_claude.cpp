@@ -47,6 +47,8 @@ static bool       claude_dirty = true;
 static uint32_t   seen_version;
 static bool       seen_ready;
 static uint32_t   seen_accent = UINT32_MAX;
+static SessRow   *pressed_row;
+static char       pressed_id[DECK_CLAUDE_ID_MAX];  // rows can re-sort while a finger is down
 
 static void no_click(lv_obj_t *o)
 {
@@ -95,17 +97,20 @@ static lv_coord_t right_reserve(uint8_t w)
 static void row_cb(lv_event_t *e)
 {
     SessRow *r = (SessRow *)lv_event_get_user_data(e);
-    if (!deck_net_ready() || !snap_ok || r->idx < 0 || r->idx >= snap.count) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        bool ok = snap_ok && r->idx >= 0 && r->idx < snap.count;
+        deck_claude_copy(pressed_id, sizeof(pressed_id), ok ? snap.s[r->idx].id : "");
+        pressed_row = r;
         return;
     }
-    const DeckClaudeSession *s = &snap.s[r->idx];
-    if (!s->tmux) {
+    if (r != pressed_row || !deck_net_ready() || !snap_ok) {
         return;
     }
-    if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED) {
-        deck_net_claude_action(s->id, "", DCA_FOCUS);
-    } else if (lv_event_get_code(e) == LV_EVENT_LONG_PRESSED && s->state == DCS_WORKING) {
-        deck_net_claude_action(s->id, "", DCA_INTERRUPT);
+    bool interrupt = code == LV_EVENT_LONG_PRESSED;
+    const DeckClaudeSession *s = deck_claude_tap_target(&snap, pressed_id, interrupt);
+    if (s) {
+        deck_net_claude_action(s->id, "", interrupt ? DCA_INTERRUPT : DCA_FOCUS);
     }
 }
 
@@ -131,6 +136,7 @@ static void sessions_create(ClaudeWidget *cw, lv_coord_t bw, lv_coord_t bh)
         lv_obj_add_flag(r->obj, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_flag(r->obj, LV_OBJ_FLAG_GESTURE_BUBBLE);
         lv_obj_add_flag(r->obj, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_event_cb(r->obj, row_cb, LV_EVENT_PRESSED, r);
         lv_obj_add_event_cb(r->obj, row_cb, LV_EVENT_SHORT_CLICKED, r);
         lv_obj_add_event_cb(r->obj, row_cb, LV_EVENT_LONG_PRESSED, r);
 

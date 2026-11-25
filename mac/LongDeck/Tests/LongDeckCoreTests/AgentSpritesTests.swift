@@ -181,7 +181,7 @@ private func agentsConfig() -> DeckConfig {
         #expect(s.frameW == 60 && s.frameH == 72)
         #expect(s.hatW == 60 && s.hatH == 30)
         #expect(s.hatY.allSatisfy { $0 == 6 })
-        // Native (8, 13) of working frame 1 is body orange #D97757.
+        // Native (8, 13) of the first working frame is body orange #D97757.
         let at = ((13 * 3 + 1) * s.frameW + (8 * 3 + 1)) * 3
         #expect(Array(s.frames[0][at..<at + 3]) == FaceRenderer.pack(r: 0xD9, g: 0x77, b: 0x57, a: 255))
     }

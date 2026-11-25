@@ -285,3 +285,14 @@ bool deck_claude_needy_update(const DeckClaude *c, uint32_t keys[DECK_CLAUDE_MAX
   *count = n;
   return fresh;
 }
+
+const DeckClaudeSession *deck_claude_tap_target(const DeckClaude *c, const char *id, bool interrupt) {
+  if (!c || !id || !*id) return nullptr;
+  for (int i = 0; i < c->count && i < DECK_CLAUDE_MAX_SESSIONS; i++) {
+    const DeckClaudeSession &s = c->s[i];
+    if (!s.live || strcmp(s.id, id) != 0) continue;
+    if (!s.tmux || (interrupt && s.state != DCS_WORKING)) return nullptr;
+    return &s;
+  }
+  return nullptr;
+}

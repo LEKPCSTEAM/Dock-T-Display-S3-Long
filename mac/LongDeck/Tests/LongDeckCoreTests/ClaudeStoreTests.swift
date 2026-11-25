@@ -21,6 +21,29 @@ private func json(_ body: String) throws -> [String: Any] {
     try #require(try JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any])
 }
 
+// Every string at its cap and made of characters JSON escapes.
+private func noisyStore(live: Int, history: Int, event: (Int) -> String?) throws -> ClaudeStore {
+    var store = ClaudeStore(runTag: "a3f9")
+    let noisy = String(repeating: #"\""#, count: 30)
+    let input = try JSONSerialization.data(withJSONObject: ["command": String(repeating: #"\""#, count: 300)])
+    let extra = #","tool_name":"# + JSONText.compact(.string(noisy)) + #","tool_input":"#
+        + String(decoding: input, as: UTF8.self)
+    for i in 0..<live {
+        let id = String(format: "%039d", i)
+        let update = ClaudeStatusUpdate(sessionId: id, model: noisy, costUSD: 123.45, contextPct: 99.6,
+                                        projectDir: "/x/" + noisy)
+        store.apply(update, pane: "%\(i)", now: at(TimeInterval(i)), wall: wall0)
+        store.setName(String(format: "%02d", i) + noisy, forSession: id)
+        if let e = event(i) { feed(&store, hookJSON(id, e, extra: extra), at: at(100 + TimeInterval(i))) }
+    }
+    for i in 0..<history {
+        store.history.record(name: ClaudeText.prefix(String(format: "h%02d", i) + noisy, bytes: 23),
+                             project: ClaudeText.project("/y/" + noisy),
+                             endedAt: wall0.timeIntervalSince1970 - TimeInterval(i))
+    }
+    return store
+}
+
 @Suite struct ClaudeStoreTests {
     @Test func bodyMatchesC1() {
         var store = ClaudeStore(runTag: "a3f9")
@@ -250,24 +273,36 @@ private func json(_ body: String) throws -> [String: Any] {
     }
 
     @Test func bodyWorstCaseFitsBoard() throws {
-        var store = ClaudeStore(runTag: "a3f9")
-        let noisy = String(repeating: #"\""#, count: 30)
-        for i in 0..<8 {
-            let id = String(format: "%039d", i)
-            let dir = #"/x/\#(String(repeating: #"\""#, count: 30))"#
-            let update = ClaudeStatusUpdate(sessionId: id, model: String(repeating: #"""#, count: 30),
-                                            costUSD: 123.45, contextPct: 99.6, projectDir: dir)
-            store.apply(update, pane: "%1", now: at(TimeInterval(i)))
-        }
-        let command = String(repeating: #"\""#, count: 300)
-        let input = try JSONSerialization.data(withJSONObject: ["command": command])
-        let extra = #","tool_name":"Bash","tool_input":"# + String(decoding: input, as: UTF8.self)
-        feed(&store, hookJSON(String(format: "%039d", 0), "PermissionRequest", extra: extra), at: at(20))
+        let events: [String?] = ["PermissionRequest", nil, "PreToolUse", "Stop"]
+        let store = try noisyStore(live: 24, history: 0) { events[$0 % 4] }
         let body = store.body(now: wall0)
-        #expect(body.utf8.count <= 4096)
+        #expect(body.utf8.count <= ClaudeStore.bodyLimit)
         let parsed = try json(body)
-        #expect((parsed["sessions"] as? [Any])?.count == 8)
-        #expect(!noisy.isEmpty)
+        #expect(parsed["prompt"] is [String: Any])
+        let states = try #require(parsed["sessions"] as? [[String: Any]]).map { $0["state"] as? String ?? "" }
+        #expect(states.count < 24)
+        #expect(states.filter { $0 == "permission" }.count == 6)
+        #expect(states.filter { $0 == "waiting" }.count == 6)
+        #expect(!states.contains("done") || states.filter { $0 == "working" }.count == 6)
+    }
+
+    @Test func bodyDropsHistoryBeforeLiveRows() throws {
+        let store = try noisyStore(live: 16, history: 8) { $0 % 2 == 0 ? "PermissionRequest" : "PreToolUse" }
+        let body = store.body(now: wall0)
+        #expect(body.utf8.count <= ClaudeStore.bodyLimit)
+        let rows = try #require(try json(body)["sessions"] as? [[String: Any]])
+        #expect(rows.filter { $0["live"] as? Bool == true }.count == 16)
+        #expect(rows.filter { $0["live"] as? Bool == false }.count < 8)
+    }
+
+    @Test func bodyAllNeedyStillFits() throws {
+        let store = try noisyStore(live: 24, history: 0) { _ in "PermissionRequest" }
+        let body = store.body(now: wall0)
+        #expect(body.utf8.count <= ClaudeStore.bodyLimit)
+        let parsed = try json(body)
+        #expect(parsed["prompt"] is [String: Any])
+        let rows = try #require(parsed["sessions"] as? [Any])
+        #expect(rows.count > 0 && rows.count < 24)
     }
 
     @Test func promptIsOldestPendingWithCount() throws {

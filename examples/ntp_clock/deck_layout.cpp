@@ -200,3 +200,19 @@ bool deck_layout_parse(const char *json, size_t len, DeckLayout *out, char *err,
   *out = tmp;
   return true;
 }
+
+bool deck_layout_faces_cached(const DeckLayout *l, bool (*exists)(uint16_t id)) {
+  if (!l || !exists) return false;
+  for (int p = 0; p < l->page_count; p++) {
+    const DeckPage &pg = l->pages[p];
+    for (int i = 0; i < pg.count; i++)
+      if (pg.widgets[i].type == DW_KEY && !exists(pg.widgets[i].face)) return false;
+  }
+  const DeckAgentSprites &sp = l->sprites;
+  if (!sp.present) return true;
+  for (int i = 0; i < sp.frames; i++)
+    if (!exists((uint16_t)(sp.first_id + i))) return false;
+  for (int i = 0; i < sp.hat_count; i++)
+    if (!exists((uint16_t)(sp.hat_first + i))) return false;
+  return true;
+}

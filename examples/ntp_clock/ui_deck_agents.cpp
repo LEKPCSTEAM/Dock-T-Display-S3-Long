@@ -9,7 +9,7 @@
 #define CELL_H        90
 #define CELL_PAD      3
 #define OFFLINE_OPA   102
-#define MAX_AGENTS    DECK_MAX_PAGES
+#define MAX_AGENTS    2     // each costs up to 24 tiles of internal-heap LVGL objects
 #define SPRITE_SLOTS  (DECK_MAX_FACES - DECK_SPRITE_FIRST_ID + 1)
 #define NO_HAT        0xFF
 #define UNSET         0xFF
@@ -87,6 +87,8 @@ static AgentShared *agents;
 static int          widget_count;
 static bool         snap_ok;
 static uint32_t     seen_beat = UINT32_MAX;
+static AgentTile   *pressed_tile;
+static char         pressed_id[DECK_CLAUDE_ID_MAX];  // rows can re-sort while a finger is down
 
 static bool         agents_dirty = true;
 static uint32_t     seen_version;
@@ -253,18 +255,21 @@ static void tile_show_frame(AgentTile *tl)
 
 static void tile_cb(lv_event_t *e)
 {
-    AgentTile *tl = (AgentTile *)lv_event_get_user_data(e);
-    if (!deck_net_ready() || !snap_ok || tl->idx >= agents->snap.count) {
+    AgentTile      *tl   = (AgentTile *)lv_event_get_user_data(e);
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        bool ok = snap_ok && tl->idx < agents->snap.count;
+        deck_claude_copy(pressed_id, sizeof(pressed_id), ok ? agents->snap.s[tl->idx].id : "");
+        pressed_tile = tl;
         return;
     }
-    const DeckClaudeSession *s = &agents->snap.s[tl->idx];
-    if (!s->live || !s->tmux) {
+    if (tl != pressed_tile || !deck_net_ready() || !snap_ok) {
         return;
     }
-    if (lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED) {
-        deck_net_claude_action(s->id, "", DCA_FOCUS);
-    } else if (lv_event_get_code(e) == LV_EVENT_LONG_PRESSED && s->state == DCS_WORKING) {
-        deck_net_claude_action(s->id, "", DCA_INTERRUPT);
+    bool interrupt = code == LV_EVENT_LONG_PRESSED;
+    const DeckClaudeSession *s = deck_claude_tap_target(&agents->snap, pressed_id, interrupt);
+    if (s) {
+        deck_net_claude_action(s->id, "", interrupt ? DCA_INTERRUPT : DCA_FOCUS);
     }
 }
 
@@ -293,6 +298,7 @@ static void tile_create(AgentWidget *aw, int i)
     no_click(o);
     lv_obj_add_flag(o, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_flag(o, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(o, tile_cb, LV_EVENT_PRESSED, tl);
     lv_obj_add_event_cb(o, tile_cb, LV_EVENT_SHORT_CLICKED, tl);
     lv_obj_add_event_cb(o, tile_cb, LV_EVENT_LONG_PRESSED, tl);
     tl->obj = o;

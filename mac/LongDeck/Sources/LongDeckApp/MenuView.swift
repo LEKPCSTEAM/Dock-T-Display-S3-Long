@@ -31,7 +31,7 @@ struct MenuView: View {
         Text(claude.statusText)
         if claude.installed {
             if !claude.hooksCurrent {
-                Button("Reinstall Claude hooks (adds subagent count)") { claude.install() }
+                Button("Reinstall Claude hooks (adds subagent count)") { claude.reinstall() }
             }
             Button("Uninstall Claude Code integration…") { claude.uninstall() }
         } else {

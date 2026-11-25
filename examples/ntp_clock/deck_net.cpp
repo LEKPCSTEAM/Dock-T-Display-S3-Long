@@ -295,15 +295,7 @@ static void send_sealed(uint8_t num, const char *type, const std::string &body)
 
 static bool cache_complete()
 {
-    if (!s_snap_has_layout) return false;
-    for (int p = 0; p < s_snap_layout.page_count; p++) {
-        const DeckPage &pg = s_snap_layout.pages[p];
-        for (int i = 0; i < pg.count; i++) {
-            if (pg.widgets[i].type != DW_KEY) continue;
-            if (!deck_store_face_exists(pg.widgets[i].face)) return false;
-        }
-    }
-    return true;
+    return s_snap_has_layout && deck_layout_faces_cached(&s_snap_layout, deck_store_face_exists);
 }
 
 static void check_became_ready(uint8_t num)

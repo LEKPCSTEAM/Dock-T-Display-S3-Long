@@ -204,6 +204,12 @@ public enum ClaudeInstaller {
         do { try fm.removeItem(at: paths.stateFile) } catch { throw ClaudeInstallError.writeFailed("\(error)") }
     }
 
+    @discardableResult
+    public static func reinstall(_ paths: ClaudeInstallPaths, token: String, now: Date) throws -> ClaudeInstallState {
+        try uninstall(paths, now: now)
+        return try install(paths, token: token, now: now)
+    }
+
     private static func hookGroup(command: String) throws -> JSONValue {
         let text = "{\"hooks\":[{\"type\":\"command\",\"command\":\(JSONText.compact(.string(command))),\"timeout\":2,\"onFailure\":\"continue\"}]}"
         return try JSONText.parse(Data(text.utf8))

@@ -390,6 +390,35 @@ void test_face_range_192() {
   TEST_ASSERT_EQUAL_UINT16(185, l.sprites.hat_first);
 }
 
+static bool s_have[DECK_MAX_FACES + 1];
+static bool have(uint16_t id) { return id <= DECK_MAX_FACES && s_have[id]; }
+
+void test_faces_cached_needs_sprites() {
+  DeckLayout l;
+  char err[64];
+  std::string s = layout(page("P", key("a", 0, 0, 2, 1, 1, "claude_agents") + "," + key("k", 2, 0, 1, 1, 5) + "," +
+                                       key("v", 3, 0, 1, 1, 9, "volume")));
+  s.insert(s.size() - 1, sprites(129, TAGS14, 14, 14, "[143,8]"));
+  TEST_ASSERT_TRUE(parse(s, &l, err));
+  memset(s_have, 0, sizeof s_have);
+  s_have[5] = true;
+  for (int id = 129; id < 151; id++) s_have[id] = true;
+  TEST_ASSERT_TRUE(deck_layout_faces_cached(&l, have));
+  s_have[142] = false;
+  TEST_ASSERT_FALSE(deck_layout_faces_cached(&l, have));
+  s_have[142] = true;
+  s_have[150] = false;
+  TEST_ASSERT_FALSE(deck_layout_faces_cached(&l, have));
+  s_have[150] = true;
+  s_have[5] = false;
+  TEST_ASSERT_FALSE(deck_layout_faces_cached(&l, have));
+  s_have[5] = true;
+  l.sprites.present = false;
+  memset(s_have + 129, 0, sizeof s_have - 129);
+  TEST_ASSERT_TRUE(deck_layout_faces_cached(&l, have));
+  TEST_ASSERT_FALSE(deck_layout_faces_cached(&l, nullptr));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_parse_claude_example);
@@ -421,5 +450,6 @@ int main() {
   RUN_TEST(test_absent_sprites_default);
   RUN_TEST(test_bad_sprite_table_is_absent);
   RUN_TEST(test_face_range_192);
+  RUN_TEST(test_faces_cached_needs_sprites);
   return UNITY_END();
 }

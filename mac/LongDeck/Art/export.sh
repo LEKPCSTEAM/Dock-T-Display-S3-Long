@@ -1,9 +1,11 @@
 #!/bin/bash
 # Usage: export.sh [out-dir]  (default: the app's bundled sprites)
 set -euo pipefail
+OUT="${1:-}"
+[[ -z "$OUT" || "$OUT" == /* ]] || OUT="$PWD/$OUT"
 cd "$(dirname "$0")"
 ASEPRITE="${ASEPRITE:-/Applications/Aseprite.app/Contents/MacOS/aseprite}"
-OUT="${1:-../Sources/LongDeckCore/Resources/sprites}"
+OUT="${OUT:-../Sources/LongDeckCore/Resources/sprites}"
 mkdir -p "$OUT"
 for name in claude-agent claude-hats; do
     "$ASEPRITE" -b "$name.aseprite" \

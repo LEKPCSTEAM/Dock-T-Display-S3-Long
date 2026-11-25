@@ -41,6 +41,7 @@ public struct ClaudeStore: Sendable {
     public static let tombstoneTTL: TimeInterval = 600
     private static let maxIdBytes = 39
     private static let maxQueue = 16
+    public static let bodyLimit = 8192  // board DECK_CLAUDE_BODY_MAX
 
     private let runTag: String
     private var requestCount = 0
@@ -241,7 +242,7 @@ public struct ClaudeStore: Sendable {
             $0 + ($1.state == .working ? 1 : 0) + runningSubagents($1, wall: wall)
         }
         let uniqueNames = uniqueNames()
-        var list: [[String: Any]] = shown.map { s in
+        var live: [[String: Any]] = shown.map { s in
             let project = ClaudeText.project(s.projectDir ?? s.cwd)
             let name = uniqueNames[s.id] ?? Self.displayName(s)
             let tool: String
@@ -269,13 +270,13 @@ public struct ClaudeStore: Sendable {
             ]
         }
         let liveNames = Set(sessions.values.map(Self.displayName))
-        let past = history.records
+        let records = history.records
             .filter { !liveNames.contains($0.name) }
             .sorted { ($0.endedAt, $1.name) > ($1.endedAt, $0.name) }
-            .prefix(max(0, Self.maxSessions - list.count))
-        for r in past {
+            .prefix(max(0, Self.maxSessions - live.count))
+        var past: [[String: Any]] = records.map { r in
             let hat = AgentHat.of(r.name)
-            list.append([
+            return [
                 "id": "h:" + r.name,
                 "project": r.project,
                 "name": r.name,
@@ -290,7 +291,7 @@ public struct ClaudeStore: Sendable {
                 "ctx": -1,
                 "cost_cents": -1,
                 "tmux": false,
-            ])
+            ]
         }
         var prompt: Any = NSNull()
         let pendings = pendingPrompts()
@@ -307,16 +308,39 @@ public struct ClaudeStore: Sendable {
                 "tool": ClaudeText.toolLabel(first.pending.toolName),
             ] as [String: Any]
         }
-        let root: [String: Any] = [
+        var root: [String: Any] = [
             "agents_total": agentsTotal,
             "prompt": prompt,
-            "sessions": list,
             "usage": ["five_hour": windowJSON(fiveHour, now), "seven_day": windowJSON(sevenDay, now)],
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: root,
-                                                     options: [.sortedKeys, .withoutEscapingSlashes])
-        else { return "{\"agents_total\":0,\"prompt\":null,\"sessions\":[],\"usage\":{\"five_hour\":null,\"seven_day\":null}}" }
-        return String(decoding: data, as: UTF8.self)
+        while true {
+            root["sessions"] = live + past
+            guard let data = try? JSONSerialization.data(withJSONObject: root,
+                                                         options: [.sortedKeys, .withoutEscapingSlashes])
+            else { return "{\"agents_total\":0,\"prompt\":null,\"sessions\":[],\"usage\":{\"five_hour\":null,\"seven_day\":null}}" }
+            if data.count <= Self.bodyLimit || !Self.dropRow(&live, &past) {
+                return String(decoding: data, as: UTF8.self)
+            }
+        }
+    }
+
+    // History first, then idle rows; needy rows only as a last resort.
+    private static func dropRow(_ live: inout [[String: Any]], _ past: inout [[String: Any]]) -> Bool {
+        if !past.isEmpty {
+            past.removeLast()
+        } else if let i = live.lastIndex(where: { !needy($0) }) {
+            live.remove(at: i)
+        } else if !live.isEmpty {
+            live.removeLast()
+        } else {
+            return false
+        }
+        return true
+    }
+
+    private static func needy(_ row: [String: Any]) -> Bool {
+        let state = row["state"] as? String
+        return state == ClaudeState.permission.rawValue || state == ClaudeState.waiting.rawValue
     }
 
     private static func displayName(_ s: ClaudeSession) -> String {

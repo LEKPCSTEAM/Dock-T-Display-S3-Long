@@ -264,6 +264,45 @@ private func parsed(_ text: String) throws -> JSONValue { try JSONText.parse(Dat
         #expect(try env.settingsText() == snapshot)
     }
 
+    @Test func reinstallUpgradesOldInstall() throws {
+        let env = try makeEnv()
+        try ClaudeInstaller.install(env.paths, token: token, now: now)
+        // Mimic a pre-subagent install, plus a later user hook.
+        let mine = try parsed("{\"hooks\":[{\"type\":\"command\",\"command\":\"mine\"}]}")
+        var v = try env.json()
+        var hooks = v["hooks"]!.removing("SubagentStart")
+        hooks = hooks.setting("SubagentStop", .array(groups(v, "SubagentStop").filter { !env.isLongDeckGroup($0) }))
+        hooks = hooks.setting("Stop", .array(groups(v, "Stop") + [mine]))
+        v = v.setting("hooks", hooks)
+        try env.write(JSONText.pretty(v))
+        var st = try #require(ClaudeInstaller.loadState(env.paths))
+        st.createdEvents = ["PostToolUseFailure"]
+        try JSONEncoder().encode(st).write(to: env.state)
+        #expect(!ClaudeInstaller.isCurrent(env.paths))
+        let before = try env.json()
+
+        let fresh = String(repeating: "b", count: 64)
+        let state = try ClaudeInstaller.reinstall(env.paths, token: fresh, now: now)
+        #expect(ClaudeInstaller.isCurrent(env.paths))
+        #expect(state.token == fresh)
+        #expect(state.createdEvents == ["PostToolUseFailure", "SubagentStart"])
+        let after = try env.json()
+        for ev in ClaudeInstaller.hookEvents {
+            #expect(groups(after, ev).filter(env.isLongDeckGroup).count == 1)
+            #expect(groups(after, ev).filter { !env.isLongDeckGroup($0) } ==
+                    groups(before, ev).filter { !env.isLongDeckGroup($0) })
+        }
+        #expect(groups(after, "StopFailure") == groups(before, "StopFailure"))
+        #expect(after["statusLine"]?["command"] == .string(StatusLineWrapper.shellQuote(env.wrapper.path)))
+        let script = try String(contentsOf: env.hookScript, encoding: .utf8)
+        #expect(script == ClaudeHookScript.script(url: "http://127.0.0.1:47821/hook", token: fresh))
+
+        try ClaudeInstaller.uninstall(env.paths, now: now)
+        var expected = try parsed(settingsFixture)
+        expected = expected.setting("hooks", expected["hooks"]!.setting("Stop", .array(groups(expected, "Stop") + [mine])))
+        #expect(try env.json() == expected)
+    }
+
     @Test func staleGroupsReplaced() throws {
         let env = try makeEnv(settings: nil)
         try env.write("{\"hooks\":{\"Stop\":[\(legacyHttpGroup("old"))],\"PreToolUse\":[\(env.expectedGroup)]}}\n")

@@ -105,6 +105,30 @@ final class ClaudeController: ObservableObject {
             showError(error)
             return
         }
+        stopIntegration()
+    }
+
+    func reinstall() {
+        let paths = Self.livePaths()
+        do {
+            let token = try Self.makeToken()
+            let state = try ClaudeInstaller.reinstall(paths, token: token, now: Date())
+            hooksCurrent = ClaudeInstaller.isCurrent(paths)
+            startListener(token: state.token)
+            publish()
+            let done = NSAlert()
+            done.messageText = "Claude hooks reinstalled"
+            done.informativeText = "Restart running Claude Code sessions to report subagents."
+            NSApp.activate(ignoringOtherApps: true)
+            done.runModal()
+        } catch {
+            // Uninstall succeeded but install failed: nothing is installed now.
+            if ClaudeInstaller.loadState(paths) == nil { stopIntegration() }
+            showError(error)
+        }
+    }
+
+    private func stopIntegration() {
         listener?.stop()
         listener = nil
         listening = false
