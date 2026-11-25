@@ -23,6 +23,8 @@ final class ClaudeController: ObservableObject {
     private var inFlight = Set<String>()
     private var actionRequests = Set<String>()
     private var busyPanes = Set<String>()
+    private var sessionsRefreshing = false
+    private var lastSessionsRefresh = -TimeInterval.infinity
     private var listenerToken: String?
     private var retryTask: Task<Void, Never>?
     private var wakeObserver: NSObjectProtocol?
@@ -44,6 +46,7 @@ final class ClaudeController: ObservableObject {
             hooksCurrent = ClaudeInstaller.isCurrent(Self.livePaths())
             startListener(token: state.token)
         }
+        refreshTmuxSessions()
         publish()
         if wakeObserver == nil {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
@@ -137,9 +140,10 @@ final class ClaudeController: ObservableObject {
         listenerError = nil
         installed = false
         hooksCurrent = true
-        let kept = store.history
+        let (kept, keptTmux) = (store.history, store.tmuxSessions)
         store = ClaudeStore(runTag: String(UUID().uuidString.prefix(4)).lowercased())
         store.history = kept
+        store.tmuxSessions = keptTmux
         inFlight = []
         publish()
     }
@@ -233,6 +237,9 @@ final class ClaudeController: ObservableObject {
         case .statusLine:
             guard let update = ClaudeStatusUpdate.decode(inbound.body) else { return }
             store.apply(update, pane: inbound.pane, now: monotonic)
+            if let pane = inbound.pane, store.sessions[update.sessionId]?.name == nil {
+                lookUpName(pane: pane, session: update.sessionId)
+            }
         }
         persistHistory()
         publish()
@@ -248,6 +255,30 @@ final class ClaudeController: ObservableObject {
         }
     }
 
+    private func refreshTmuxSessions() {
+        guard !sessionsRefreshing, monotonic - lastSessionsRefresh >= 10 else { return }
+        sessionsRefreshing = true
+        lastSessionsRefresh = monotonic
+        let runner = ProcessTmuxRunner()
+        Task { @MainActor [weak self] in
+            let found = await Task.detached { () -> Set<String>? in
+                do {
+                    let out = try runner.run(["list-sessions", "-F", "#S"])
+                    return Set(out.split(whereSeparator: \.isNewline).map(String.init))
+                } catch TmuxError.failed {
+                    return []
+                } catch {
+                    return nil
+                }
+            }.value
+            guard let self else { return }
+            sessionsRefreshing = false
+            guard let found, found != store.tmuxSessions else { return }
+            store.tmuxSessions = found
+            publish()
+        }
+    }
+
     private func persistHistory() {
         guard store.historyChanged else { return }
         store.historyChanged = false
@@ -258,6 +289,7 @@ final class ClaudeController: ObservableObject {
     }
 
     private func tick() {
+        refreshTmuxSessions()
         store.expire(now: monotonic, wall: Date())
         persistHistory()
         for (session, pending) in store.pendingPrompts() {

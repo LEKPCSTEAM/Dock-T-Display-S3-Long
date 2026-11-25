@@ -498,6 +498,55 @@ private func client(_ tty: String, _ session: String, _ activity: Int) -> TmuxCl
         #expect(log.ttys.isEmpty)
     }
 
+    @Test func historyFocusSwitchesChosenClientToSession() {
+        let tmux = FakeTmux()
+        tmux.outputs["list-clients"] = "/dev/ttys028\tcaltera\t100\n/dev/ttys011\thome\t300\n"
+        let log = Activations()
+        let req = ClaudeActionRequest(session: "h:Caltera", request: "", action: .focus)
+        let ack = responder(tmux, front: "/dev/ttys011", log: log).handle(req, target: nil)
+        #expect(ack == ClaudeAck(request: "", ok: true, reason: ""))
+        #expect(tmux.calls == [
+            ["has-session", "-t", "=Caltera"],
+            ["list-clients", "-F", clientFormat],
+            ["switch-client", "-c", "/dev/ttys011", "-t", "=Caltera"],
+        ])
+        #expect(log.ttys == ["/dev/ttys011"])
+    }
+
+    @Test func liveFocusWithoutPaneUsesSessionName() {
+        let tmux = FakeTmux()
+        tmux.outputs["list-clients"] = "/dev/ttys028\tCaltera\t100\n"
+        let log = Activations()
+        let t = ClaudeTarget(pane: nil, pendingRequest: nil, toolName: nil, toolInputJSON: nil, cwd: nil, name: "Caltera")
+        let ack = responder(tmux, log: log).handle(act(.focus, ""), target: t)
+        #expect(ack.ok)
+        #expect(!tmux.calls.contains { $0.first == "switch-client" || $0.first == "send-keys" })
+        #expect(log.ttys == ["/dev/ttys028"])
+    }
+
+    @Test func historyFocusMissingSessionRefused() {
+        let tmux = FakeTmux()
+        tmux.failing = ["has-session"]
+        let req = ClaudeActionRequest(session: "h:Gone", request: "", action: .focus)
+        #expect(responder(tmux).handle(req, target: nil) == refused("no_session", ""))
+        #expect(tmux.calls == [["has-session", "-t", "=Gone"]])
+    }
+
+    @Test func historyFocusWithoutClientRefused() {
+        let tmux = FakeTmux()
+        let log = Activations()
+        let req = ClaudeActionRequest(session: "h:Caltera", request: "", action: .focus)
+        #expect(responder(tmux, log: log).handle(req, target: nil) == refused("no_client", ""))
+        #expect(log.ttys.isEmpty)
+    }
+
+    @Test func interruptOnHistoryIdRefused() {
+        let tmux = FakeTmux()
+        let req = ClaudeActionRequest(session: "h:Caltera", request: "", action: .interrupt)
+        #expect(responder(tmux).handle(req, target: nil) == refused("unknown_session", ""))
+        #expect(tmux.calls.isEmpty)
+    }
+
     @Test func chooseClientRules() {
         let a = client("/dev/ttys001", "home", 100)
         let b = client("/dev/ttys002", "work", 50)

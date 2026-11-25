@@ -227,7 +227,7 @@ void ui_claude_overlay_update(const UiTick *t)
     // After show_prompt so a same-tick toast stays above the overlay.
     DeckClaudeAck ack;
     if (deck_net_take_claude_ack(&ack) && !ack.ok) {
-        ui_toast(KEYBOARD_MSG);
+        ui_toast(*ack.request ? KEYBOARD_MSG : "tmux not available");
         if (root && strcmp(ack.request, shown.request) == 0) {
             set_sendable(true);
         }

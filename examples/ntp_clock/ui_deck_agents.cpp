@@ -374,7 +374,7 @@ static void tile_refresh(AgentWidget *aw, AgentTile *tl, const DeckClaudeSession
     const DeckAgentSprites *sp = &agents->sp;
     bool frame_dirty = false;
 
-    bool tappable = s->live && s->tmux;
+    bool tappable = s->tmux;
     if (tappable != tl->tappable) {
         tl->tappable = tappable;
         if (tappable) {

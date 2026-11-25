@@ -290,7 +290,7 @@ const DeckClaudeSession *deck_claude_tap_target(const DeckClaude *c, const char 
   if (!c || !id || !*id) return nullptr;
   for (int i = 0; i < c->count && i < DECK_CLAUDE_MAX_SESSIONS; i++) {
     const DeckClaudeSession &s = c->s[i];
-    if (!s.live || strcmp(s.id, id) != 0) continue;
+    if (strcmp(s.id, id) != 0 || (interrupt && !s.live)) continue;
     if (!s.tmux || (interrupt && s.state != DCS_WORKING)) return nullptr;
     return &s;
   }

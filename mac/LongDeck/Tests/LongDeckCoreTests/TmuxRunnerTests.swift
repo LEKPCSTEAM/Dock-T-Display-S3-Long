@@ -4,17 +4,23 @@ import Testing
 
 @Suite struct TmuxRunnerTests {
     @Test func runsBinaryWithArgs() throws {
-        #expect(try ProcessTmuxRunner(path: "/bin/echo").run(["a", "b"]) == "a b\n")
+        #expect(try ProcessTmuxRunner(path: "/bin/echo").run(["a", "b"]) == "-u a b\n")
+    }
+
+    @Test func forcesUTF8FlagFirst() throws {
+        #expect(try ProcessTmuxRunner(path: "/bin/echo").run(["display-message", "-p", "-t", "%37"])
+                == "-u display-message -p -t %37\n")
     }
 
     @Test func argsReachBinaryWithoutShell() throws {
-        #expect(try ProcessTmuxRunner(path: "/bin/echo").run(["$HOME", "a;b", "`id`", "%37"]) == "$HOME a;b `id` %37\n")
+        #expect(try ProcessTmuxRunner(path: "/bin/echo").run(["$HOME", "a;b", "`id`", "%37"]) == "-u $HOME a;b `id` %37\n")
     }
 
-    @Test func timesOutAndKills() {
+    @Test func timesOutAndKills() throws {
         let start = Date()
+        // sh accepts -u (nounset), so the prepended flag is harmless here.
         #expect(throws: TmuxError.timeout) {
-            try ProcessTmuxRunner(path: "/bin/sleep", timeout: 0.5).run(["5"])
+            try ProcessTmuxRunner(path: "/bin/sh", timeout: 0.5).run(["-c", "sleep 5"])
         }
         #expect(Date().timeIntervalSince(start) < 2)
     }

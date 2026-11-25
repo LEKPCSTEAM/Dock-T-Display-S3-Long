@@ -384,16 +384,21 @@ private func noisyStore(live: Int, history: Int, event: (Int) -> String?) throws
         #expect(store.sessions[claudeA] != nil)
     }
 
-    @Test func paneReassignmentClearsOldSessionPaneAndPrompt() {
+    @Test func paneReassignmentEndsOldSession() throws {
         var store = ClaudeStore(runTag: "a3f9")
         feed(&store, hk1, pane: "%37", at: at(0))
+        store.setName("Caltera", forSession: claudeA)
         feed(&store, hookJSON(claudeB, "SessionStart"), pane: "%37", at: at(1))
-        let a = store.sessions[claudeA]
-        #expect(a?.pane == nil)
-        #expect(a?.pending == nil)
-        #expect(a?.state == .working)
+        #expect(store.sessions[claudeA] == nil)
         #expect(store.sessions[claudeB]?.pane == "%37")
         #expect(store.pendingPrompts().isEmpty)
+        #expect(store.historyChanged)
+        #expect(store.history.records.map(\.name) == ["Caltera"])
+        let root = try #require(try JSONSerialization.jsonObject(with: Data(store.body(now: wall0).utf8)) as? [String: Any])
+        let rows = try #require(root["sessions"] as? [[String: Any]])
+        #expect(rows.filter { $0["live"] as? Bool == true }.map { $0["id"] as? String } == [claudeB])
+        #expect(rows.contains { $0["id"] as? String == "h:Caltera" })
+        #expect(root["agents_total"] as? Int == 0)
     }
 
     @Test func sessionStartClearsPendingPrompt() {

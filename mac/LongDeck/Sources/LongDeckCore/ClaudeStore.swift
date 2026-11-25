@@ -52,6 +52,7 @@ public struct ClaudeStore: Sendable {
     public private(set) var sevenDay: UsageWindow?
     public var history = ClaudeHistory()
     public var historyChanged = false
+    public var tmuxSessions: Set<String> = []
 
     public init(runTag: String) {
         self.runTag = runTag
@@ -204,7 +205,7 @@ public struct ClaudeStore: Sendable {
     public func target(session id: String) -> ClaudeTarget? {
         guard let s = sessions[id] else { return nil }
         var target = ClaudeTarget(pane: s.pane, pendingRequest: s.pending?.request, toolName: s.pending?.toolName,
-                                  toolInputJSON: s.pending?.toolInputJSON, cwd: s.cwd)
+                                  toolInputJSON: s.pending?.toolInputJSON, cwd: s.cwd, name: s.name)
         if let head = s.pending {
             target.ambiguous = s.queue.dropFirst().contains { Self.lookAlike(head, $0, cwd: s.cwd) }
         }
@@ -266,7 +267,7 @@ public struct ClaudeStore: Sendable {
                 "state": s.state.rawValue,
                 "ctx": s.contextPct.map { Self.clampedInt($0, 0, 100) } ?? -1,
                 "cost_cents": s.costUSD.map { Self.clampedInt($0 * 100, 0, 100_000_000) } ?? -1,
-                "tmux": s.pane != nil,
+                "tmux": s.pane != nil || tmuxSessions.contains(s.name ?? Self.displayName(s)),
             ]
         }
         let liveNames = Set(sessions.values.map(Self.displayName))
@@ -290,7 +291,7 @@ public struct ClaudeStore: Sendable {
                 "state": ClaudeState.done.rawValue,
                 "ctx": -1,
                 "cost_cents": -1,
-                "tmux": false,
+                "tmux": tmuxSessions.contains(r.name),
             ]
         }
         var prompt: Any = NSNull()
@@ -385,13 +386,9 @@ public struct ClaudeStore: Sendable {
     }
 
     private mutating func claimPane(_ pane: String, for id: String, now: TimeInterval) {
-        for (key, var other) in sessions where key != id && other.pane == pane {
-            other.pane = nil
-            if !other.queue.isEmpty {
-                other.queue = []
-                if other.state == .permission { set(&other, .working, now) }
-            }
-            sessions[key] = other
+        for (key, other) in sessions.sorted(by: { $0.key < $1.key }) where key != id && other.pane == pane {
+            archive(other, now: now)
+            sessions[key] = nil
         }
     }
 

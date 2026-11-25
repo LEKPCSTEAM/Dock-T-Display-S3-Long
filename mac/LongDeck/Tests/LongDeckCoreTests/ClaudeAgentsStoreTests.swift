@@ -29,6 +29,18 @@ private func total(_ store: ClaudeStore, wall s: TimeInterval = 0) throws -> Int
 }
 
 @Suite struct ClaudeAgentsStoreTests {
+    @Test func tmuxFlagFollowsTmuxSessionNames() throws {
+        var store = ClaudeStore(runTag: "t")
+        event("s1", "SessionStart", at: 0, into: &store)
+        store.setName("Caltera", forSession: "s1")
+        store.history.record(name: "Old", project: "old", endedAt: wall0.timeIntervalSince1970 - 5)
+        var flags = try rows(store).reduce(into: [String: Bool]()) { $0[$1["id"] as! String] = $1["tmux"] as? Bool }
+        #expect(flags == ["s1": false, "h:Old": false])
+        store.tmuxSessions = ["Caltera", "Old"]
+        flags = try rows(store).reduce(into: [String: Bool]()) { $0[$1["id"] as! String] = $1["tmux"] as? Bool }
+        #expect(flags == ["s1": true, "h:Old": true])
+    }
+
     @Test func rowCarriesAgentFields() throws {
         var store = ClaudeStore(runTag: "t")
         event("s1", "SessionStart", at: 0, into: &store)

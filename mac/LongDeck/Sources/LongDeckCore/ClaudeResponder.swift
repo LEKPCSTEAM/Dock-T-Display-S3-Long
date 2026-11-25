@@ -95,9 +95,11 @@ public struct ClaudeTarget: Sendable {
     public var toolInputJSON: String?
     public var cwd: String?
     public var ambiguous: Bool
+    public var name: String?
 
     public init(pane: String?, pendingRequest: String?, toolName: String?, toolInputJSON: String?, cwd: String?,
-                ambiguous: Bool = false) {
+                ambiguous: Bool = false, name: String? = nil) {
+        self.name = name
         self.pane = pane
         self.pendingRequest = pendingRequest
         self.toolName = toolName
@@ -125,8 +127,14 @@ public struct ClaudeResponder: Sendable {
 
     public func handle(_ req: ClaudeActionRequest, target: ClaudeTarget?) -> ClaudeAck {
         let refuse = { (reason: String) in ClaudeAck(request: req.request, ok: false, reason: reason) }
+        if req.action == .focus, req.session.hasPrefix("h:") {
+            return focusAck(req, name: String(req.session.dropFirst(2)))
+        }
         guard let target else { return refuse("unknown_session") }
-        guard let pane = Self.validPane(target.pane) else { return refuse("no_pane") }
+        guard let pane = Self.validPane(target.pane) else {
+            if req.action == .focus, let name = target.name { return focusAck(req, name: name) }
+            return refuse("no_pane")
+        }
         if req.action.answersPrompt {
             guard let pending = target.pendingRequest, !pending.isEmpty, pending == req.request
             else { return refuse("stale") }
@@ -204,6 +212,26 @@ public struct ClaudeResponder: Sendable {
         }
         for args in [["select-window", "-t", pane], ["select-pane", "-t", pane]] {
             let reason = send(args)
+            guard reason.isEmpty else { return reason }
+        }
+        activateTerminal(client.tty)
+        return ""
+    }
+
+    private func focusAck(_ req: ClaudeActionRequest, name: String) -> ClaudeAck {
+        let reason = focus(sessionNamed: name)
+        return ClaudeAck(request: req.request, ok: reason.isEmpty, reason: reason)
+    }
+
+    private func focus(sessionNamed name: String) -> String {
+        guard !name.isEmpty, (try? runner.run(["has-session", "-t", "=" + name])) != nil else { return "no_session" }
+        guard let listing = try? runner.run(["list-clients", "-F", Self.clientFormat]) else { return "tmux" }
+        let clients = TmuxFocus.parseClients(listing)
+        let front = clients.contains { $0.session == name } ? nil : frontTTY()
+        guard let client = TmuxFocus.chooseClient(clients, paneSession: name, frontTTY: front)
+        else { return "no_client" }
+        if client.session != name {
+            let reason = send(["switch-client", "-c", client.tty, "-t", "=" + name])
             guard reason.isEmpty else { return reason }
         }
         activateTerminal(client.tty)

@@ -27,7 +27,7 @@ public struct ProcessTmuxRunner: TmuxRunner {
         else { throw TmuxError.notFound }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: exe)
-        process.arguments = args
+        process.arguments = ["-u"] + args
         process.standardInput = FileHandle.nullDevice
         let out = Pipe()
         let err = Pipe()

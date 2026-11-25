@@ -544,6 +544,9 @@ void test_tap_target_follows_id() {
   c.s[2].tmux = false;
   TEST_ASSERT_NULL(deck_claude_tap_target(&c, "a", false));
   c.s[0].live = false;
+  TEST_ASSERT_EQUAL_PTR(&c.s[0], deck_claude_tap_target(&c, "b", false));
+  TEST_ASSERT_NULL(deck_claude_tap_target(&c, "b", true));
+  c.s[0].tmux = false;
   TEST_ASSERT_NULL(deck_claude_tap_target(&c, "b", false));
   TEST_ASSERT_NULL(deck_claude_tap_target(&c, "gone", false));
   TEST_ASSERT_NULL(deck_claude_tap_target(&c, "", false));
