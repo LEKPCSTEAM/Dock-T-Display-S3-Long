@@ -429,17 +429,17 @@ void test_agent_step_timing() {
   DeckAgentSprites sp = sprites4();
   uint8_t f = 0;
   uint32_t at = 1000;
-  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 0, &f, &at, 1099));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 0, &f, &at, 1099, 1));
   TEST_ASSERT_EQUAL_UINT8(0, f);
-  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1100));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1100, 1));
   TEST_ASSERT_EQUAL_UINT8(1, f);
   TEST_ASSERT_EQUAL_UINT32(1100, at);
-  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1250));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1250, 1));
   TEST_ASSERT_EQUAL_UINT8(2, f);
   TEST_ASSERT_EQUAL_UINT32(1200, at);
-  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1300));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1300, 1));
   TEST_ASSERT_EQUAL_UINT8(0, f);
-  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 5000));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 5000, 1));
   TEST_ASSERT_EQUAL_UINT8(1, f);
   TEST_ASSERT_EQUAL_UINT32(5000, at);
 }
@@ -448,21 +448,78 @@ void test_agent_step_edges() {
   DeckAgentSprites sp = sprites4();
   uint8_t f = 0;
   uint32_t at = 0;
-  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 1, &f, &at, 777));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 1, &f, &at, 777, 1));
   TEST_ASSERT_EQUAL_UINT8(3, f);
   TEST_ASSERT_EQUAL_UINT32(777, at);
   f = 5;
-  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 2, &f, &at, 99999));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 2, &f, &at, 99999, 1));
   TEST_ASSERT_EQUAL_UINT8(5, f);
   sp.ms[3] = 0;
   f = 3;
   at = 0;
-  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 1, &f, &at, 99));
-  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 1, &f, &at, 100));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 1, &f, &at, 99, 1));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 1, &f, &at, 100, 1));
   TEST_ASSERT_EQUAL_UINT8(4, f);
-  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, -1, &f, &at, 5000));
-  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 7, &f, &at, 5000));
-  TEST_ASSERT_FALSE(deck_claude_agent_step(nullptr, 0, &f, &at, 5000));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, -1, &f, &at, 5000, 1));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 7, &f, &at, 5000, 1));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(nullptr, 0, &f, &at, 5000, 1));
+}
+
+void test_agent_step_beat_rounds_durations() {
+  DeckAgentSprites sp = sprites4();
+  sp.ms[0] = 150;
+  sp.ms[1] = 149;
+  sp.ms[2] = 40;
+  uint8_t f = 0;
+  uint32_t at = 1000;
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 0, &f, &at, 1100, 100));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1200, 100));
+  TEST_ASSERT_EQUAL_UINT8(1, f);
+  TEST_ASSERT_EQUAL_UINT32(1200, at);
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1300, 100));
+  TEST_ASSERT_EQUAL_UINT8(2, f);
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1400, 100));
+  TEST_ASSERT_EQUAL_UINT8(0, f);
+  TEST_ASSERT_EQUAL_UINT32(1400, at);
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 0, &f, &at, 1549, 0));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1550, 0));
+}
+
+static void needy_row(DeckClaude *c, int i, const char *id, uint8_t state) {
+  memset(&c->s[i], 0, sizeof c->s[i]);
+  strcpy(c->s[i].id, id);
+  c->s[i].state = state;
+  c->s[i].live = true;
+}
+
+void test_needy_update() {
+  DeckClaude c;
+  memset(&c, 0, sizeof c);
+  uint32_t keys[DECK_CLAUDE_MAX_SESSIONS];
+  uint8_t n = 0;
+  c.count = 2;
+  needy_row(&c, 0, "a", DCS_WORKING);
+  needy_row(&c, 1, "b", DCS_WAITING);
+  TEST_ASSERT_TRUE(deck_claude_needy_update(&c, keys, &n));
+  TEST_ASSERT_EQUAL_UINT8(1, n);
+  TEST_ASSERT_FALSE(deck_claude_needy_update(&c, keys, &n));
+  c.s[1].state = DCS_PERMISSION;
+  TEST_ASSERT_TRUE(deck_claude_needy_update(&c, keys, &n));
+  c.s[0].state = DCS_WAITING;
+  TEST_ASSERT_TRUE(deck_claude_needy_update(&c, keys, &n));
+  TEST_ASSERT_EQUAL_UINT8(2, n);
+  c.s[0].state = DCS_DONE;
+  TEST_ASSERT_FALSE(deck_claude_needy_update(&c, keys, &n));
+  TEST_ASSERT_EQUAL_UINT8(1, n);
+  needy_row(&c, 0, "b", DCS_PERMISSION);
+  needy_row(&c, 1, "a", DCS_DONE);
+  TEST_ASSERT_FALSE(deck_claude_needy_update(&c, keys, &n));
+  needy_row(&c, 0, "c", DCS_PERMISSION);
+  TEST_ASSERT_TRUE(deck_claude_needy_update(&c, keys, &n));
+  c.count = 0;
+  TEST_ASSERT_FALSE(deck_claude_needy_update(&c, keys, &n));
+  TEST_ASSERT_EQUAL_UINT8(0, n);
+  TEST_ASSERT_FALSE(deck_claude_needy_update(nullptr, keys, &n));
 }
 
 int main() {
@@ -496,5 +553,7 @@ int main() {
   RUN_TEST(test_agent_tag_fallback);
   RUN_TEST(test_agent_step_timing);
   RUN_TEST(test_agent_step_edges);
+  RUN_TEST(test_agent_step_beat_rounds_durations);
+  RUN_TEST(test_needy_update);
   return UNITY_END();
 }

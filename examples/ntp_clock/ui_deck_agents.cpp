@@ -31,6 +31,7 @@
 #define THUMB_W       4
 #define THUMB_MIN_H   10
 #define HAT_OPA       LV_OPA_60
+#define BEAT_MS       100   // every tile steps on one beat: one full-screen flush
 #define AGENT_ORANGE  lv_color_hex(0xD97757)
 
 static const uint32_t HAT_TINTS[] = {0x4ADE80, 0x60A5FA, 0xF472B6, 0xFBBF24, 0xA78BFA, 0xF87171, 0x2DD4BF, 0xF2F4F7};
@@ -77,12 +78,15 @@ struct AgentShared {
     bool             img_ok[SPRITE_SLOTS];
     lv_img_dsc_t     stripe;
     uint8_t          stripe_px[STRIPE_N * STRIPE_N * LV_IMG_PX_SIZE_ALPHA_BYTE];
+    uint32_t         needy[DECK_CLAUDE_MAX_SESSIONS];
+    uint8_t          needy_count;
     AgentWidget      w[MAX_AGENTS];
 };
 
 static AgentShared *agents;
 static int          widget_count;
 static bool         snap_ok;
+static uint32_t     seen_beat = UINT32_MAX;
 
 static bool         agents_dirty = true;
 static uint32_t     seen_version;
@@ -386,7 +390,7 @@ static void tile_refresh(AgentWidget *aw, AgentTile *tl, const DeckClaudeSession
         deco_set(aw, tl, s->state);
         tl->tag     = (int8_t)deck_claude_agent_tag(sp, s->state);
         tl->frame   = tl->tag >= 0 ? sp->tag_first[tl->tag] : 0;
-        tl->entered = lv_tick_get();
+        tl->entered = lv_tick_get() / BEAT_MS * BEAT_MS;
         frame_dirty = true;
     }
     status_set(aw, tl, s, now);
@@ -472,7 +476,7 @@ static void show_message(AgentWidget *aw, const char *text)
     }
 }
 
-static void widget_refresh(AgentWidget *aw, bool live, uint32_t now)
+static void widget_refresh(AgentWidget *aw, bool live, bool needy_new, uint32_t now)
 {
     const DeckClaude *c = &agents->snap;
     int  n       = live ? LV_MIN(c->count, DECK_CLAUDE_MAX_SESSIONS) : 0;
@@ -502,7 +506,10 @@ static void widget_refresh(AgentWidget *aw, bool live, uint32_t now)
         lv_obj_update_layout(aw->cont);
     }
     lv_coord_t max = scroll_max(aw);
-    if (lv_obj_get_scroll_y(aw->cont) > max) {
+    lv_coord_t y   = lv_obj_get_scroll_y(aw->cont);
+    if (needy_new && y > 0) {
+        lv_obj_scroll_to_y(aw->cont, 0, LV_ANIM_ON);
+    } else if (y > max) {
         lv_obj_scroll_to_y(aw->cont, max, LV_ANIM_OFF);
     }
     thumb_update(aw);
@@ -538,7 +545,7 @@ static void widget_animate(AgentWidget *aw, uint32_t ms)
         if (a.y2 < view.y1 || a.y1 > view.y2) {
             continue;
         }
-        if (deck_claude_agent_step(&agents->sp, tl->tag, &tl->frame, &tl->entered, ms)) {
+        if (deck_claude_agent_step(&agents->sp, tl->tag, &tl->frame, &tl->entered, ms, BEAT_MS)) {
             tile_show_frame(tl);
         }
     }
@@ -653,26 +660,31 @@ void ui_agents_update(const UiTick *t, bool ready, bool visible)
     if (widget_count == 0) {
         return;
     }
-    uint32_t ver  = deck_net_claude_version();
-    bool     full = agents_dirty || ver != seen_version || ready != seen_ready;
+    uint32_t ver       = deck_net_claude_version();
+    bool     full      = agents_dirty || ver != seen_version || ready != seen_ready;
+    bool     needy_new = false;
     if (full) {
         agents_dirty = false;
         seen_version = ver;
         seen_ready   = ready;
         snap_ok      = deck_net_claude(&agents->snap);
+        needy_new    = ready && snap_ok && deck_claude_needy_update(&agents->snap, agents->needy, &agents->needy_count);
     }
     bool     live = ready && snap_ok;
     uint32_t now  = t->time_valid ? (uint32_t)time(NULL) : 0;
+    uint32_t beat = lv_tick_get() / BEAT_MS;
+    bool     step = beat != seen_beat;
+    seen_beat     = beat;
     for (int i = 0; i < widget_count; i++) {
         AgentWidget *aw = &agents->w[i];
         if (full) {
             lv_obj_set_style_opa(aw->box, ready ? LV_OPA_COVER : OFFLINE_OPA, 0);
-            widget_refresh(aw, live, now);
+            widget_refresh(aw, live, needy_new, now);
         } else if (t->new_minute && live) {
             widget_ages(aw, now);
         }
-        if (visible && live) {
-            widget_animate(aw, lv_tick_get());
+        if (step && visible && live) {
+            widget_animate(aw, beat * BEAT_MS);
         }
     }
 }

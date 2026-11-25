@@ -238,7 +238,8 @@ int deck_claude_agent_tag(const DeckAgentSprites *sp, uint8_t state) {
   return sp->tag_count[0] ? 0 : -1;
 }
 
-bool deck_claude_agent_step(const DeckAgentSprites *sp, int tag, uint8_t *frame, uint32_t *entered, uint32_t now) {
+bool deck_claude_agent_step(const DeckAgentSprites *sp, int tag, uint8_t *frame, uint32_t *entered, uint32_t now,
+                            uint32_t beat) {
   if (!sp || !frame || !entered || tag < 0 || tag >= DECK_AGENT_TAGS || !sp->tag_count[tag]) return false;
   const uint8_t first = sp->tag_first[tag], count = sp->tag_count[tag];
   if (*frame < first || *frame >= first + count) {
@@ -247,10 +248,40 @@ bool deck_claude_agent_step(const DeckAgentSprites *sp, int tag, uint8_t *frame,
     return true;
   }
   if (count == 1) return false;
-  const uint32_t dur = sp->ms[*frame] ? sp->ms[*frame] : DECK_AGENT_DEFAULT_MS;
+  uint32_t dur = sp->ms[*frame] ? sp->ms[*frame] : DECK_AGENT_DEFAULT_MS;
+  if (beat > 1) {
+    dur = (dur + beat / 2) / beat * beat;
+    if (dur < beat) dur = beat;
+  }
   const uint32_t elapsed = now - *entered;
   if (elapsed < dur) return false;
   *entered = elapsed >= 2 * dur ? now : *entered + dur;
   *frame = (uint8_t)(first + (*frame - first + 1) % count);
   return true;
+}
+
+static uint32_t needy_key(const DeckClaudeSession &s) {
+  uint32_t h = 2166136261u;
+  for (const char *p = s.id; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+  return (h ^ s.state) * 16777619u;
+}
+
+bool deck_claude_needy_update(const DeckClaude *c, uint32_t keys[DECK_CLAUDE_MAX_SESSIONS], uint8_t *count) {
+  if (!c || !keys || !count) return false;
+  const uint8_t old = *count < DECK_CLAUDE_MAX_SESSIONS ? *count : DECK_CLAUDE_MAX_SESSIONS;
+  uint32_t cur[DECK_CLAUDE_MAX_SESSIONS];
+  uint8_t n = 0;
+  bool fresh = false;
+  for (int i = 0; i < c->count && i < DECK_CLAUDE_MAX_SESSIONS; i++) {
+    const DeckClaudeSession &s = c->s[i];
+    if (s.state != DCS_PERMISSION && s.state != DCS_WAITING) continue;
+    const uint32_t k = needy_key(s);
+    bool seen = false;
+    for (int j = 0; j < old && !seen; j++) seen = keys[j] == k;
+    fresh = fresh || !seen;
+    cur[n++] = k;
+  }
+  if (n) memcpy(keys, cur, n * sizeof cur[0]);
+  *count = n;
+  return fresh;
 }

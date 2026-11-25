@@ -66,4 +66,6 @@ struct DeckAgentSprites;
 int  deck_claude_agents_grid(uint8_t w, uint8_t h, int box_w, int box_h, int *cols, int *rows, int *tw, int *th);
 void deck_claude_agent_status(const DeckClaudeSession *s, uint32_t now, const char *sep, char *out, size_t n);
 int  deck_claude_agent_tag(const DeckAgentSprites *sp, uint8_t state);  // -1 when no frames
-bool deck_claude_agent_step(const DeckAgentSprites *sp, int tag, uint8_t *frame, uint32_t *entered, uint32_t now);
+bool deck_claude_agent_step(const DeckAgentSprites *sp, int tag, uint8_t *frame, uint32_t *entered, uint32_t now,
+                            uint32_t beat);  // rounds ms[f] to the nearest beat, at least one
+bool deck_claude_needy_update(const DeckClaude *c, uint32_t keys[DECK_CLAUDE_MAX_SESSIONS], uint8_t *count);  // true: a new needy row
