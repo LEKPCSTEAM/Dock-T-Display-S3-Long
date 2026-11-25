@@ -30,6 +30,10 @@ static void disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *c
     }
     // lv_disp_flush_ready() is called from the DMA-done ISR in AXS15231B.cpp.
     lcd_PushColors(area->x1, area->y1, w, h, (uint16_t *)&color_p->full);
+    // Low-heap guard queued nothing; drop the chunk instead of hanging LVGL.
+    if (!get_lcd_spi_dma_write()) {
+        lv_disp_flush_ready(disp);
+    }
 }
 
 static bool i2c_probe(uint8_t addr)

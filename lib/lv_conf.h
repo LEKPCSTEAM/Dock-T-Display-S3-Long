@@ -60,10 +60,11 @@
     #endif
 
 #else       /*LV_MEM_CUSTOM*/
-    #define LV_MEM_CUSTOM_INCLUDE <stdlib.h>   /*Header for the dynamic memory function*/
-    #define LV_MEM_CUSTOM_ALLOC   malloc
+    /* PSRAM keeps internal heap above the AXS15231B flush guard (70 KB). */
+    #define LV_MEM_CUSTOM_INCLUDE <esp32-hal-psram.h>
+    #define LV_MEM_CUSTOM_ALLOC   ps_malloc
     #define LV_MEM_CUSTOM_FREE    free
-    #define LV_MEM_CUSTOM_REALLOC realloc
+    #define LV_MEM_CUSTOM_REALLOC ps_realloc
 #endif     /*LV_MEM_CUSTOM*/
 
 /*Number of the intermediate memory buffer used during rendering and other internal processing mechanisms.
