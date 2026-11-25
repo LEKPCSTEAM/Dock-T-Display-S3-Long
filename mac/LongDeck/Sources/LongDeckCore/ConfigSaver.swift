@@ -17,17 +17,17 @@ public enum LayoutSize {
     // A real sequence number has up to 10 digits, the probe has 1.
     public static let sequenceSlack = 9
 
-    public static func sealedBytes(_ config: DeckConfig) -> Int {
-        let json = LayoutBuilder.build(config, render: { _ in Data() }).json
+    public static func sealedBytes(_ config: DeckConfig, sprites: AgentSprites? = nil) -> Int {
+        let json = LayoutBuilder.build(config, render: { _ in Data() }, sprites: sprites).json
         var sealer = FrameSealer(sessionKey: Data(count: 32))
         return sealer.seal(type: "layout", body: json).utf8.count + sequenceSlack
     }
 }
 
 public enum ConfigSaver {
-    public static func prepare(_ config: DeckConfig) throws -> Data {
+    public static func prepare(_ config: DeckConfig, sprites: AgentSprites? = AgentSprites.bundled()) throws -> Data {
         try config.validate()
-        let bytes = LayoutSize.sealedBytes(config)
+        let bytes = LayoutSize.sealedBytes(config, sprites: sprites)
         guard LayoutPushPolicy.fits(frameBytes: bytes) else {
             throw ConfigSaveError.layoutTooLarge(bytes: bytes, max: LayoutPushPolicy.maxWebSocketFrame)
         }

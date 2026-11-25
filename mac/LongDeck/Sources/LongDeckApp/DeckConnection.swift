@@ -111,7 +111,7 @@ final class DeckConnection {
 
     func push(config: DeckConfig) {
         guard sealer != nil else { return }
-        let built = LayoutBuilder.build(config)
+        let built = LayoutBuilder.build(config, sprites: AgentSprites.bundled())
         guard built.hash != boardHash else { return }
         send(built)
     }

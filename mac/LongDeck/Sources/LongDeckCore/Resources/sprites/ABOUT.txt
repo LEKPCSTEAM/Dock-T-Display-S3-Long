@@ -1,0 +1,1 @@
+Aseprite exports claude-agent.json/.png and claude-hats.json/.png live here.

@@ -18,16 +18,20 @@ public struct EditorIssue: Equatable, Sendable {
 public struct IssueEnvironment: Sendable {
     public var fileExists: @Sendable (String) -> Bool
     public var symbolExists: @Sendable (String) -> Bool
+    public var sprites: AgentSprites?
 
     public init(fileExists: @escaping @Sendable (String) -> Bool,
-                symbolExists: @escaping @Sendable (String) -> Bool) {
+                symbolExists: @escaping @Sendable (String) -> Bool,
+                sprites: AgentSprites? = nil) {
         self.fileExists = fileExists
         self.symbolExists = symbolExists
+        self.sprites = sprites
     }
 
     public static let live = IssueEnvironment(
         fileExists: { FileManager.default.fileExists(atPath: $0) },
-        symbolExists: { SymbolCatalog.exists($0) })
+        symbolExists: { SymbolCatalog.exists($0) },
+        sprites: AgentSprites.bundled())
 
     public static let permissive = IssueEnvironment(fileExists: { _ in true }, symbolExists: { _ in true })
 }
@@ -39,7 +43,7 @@ public enum EditorIssues {
             out.append(EditorIssue(severity: .error, page: nil, widget: nil,
                                    message: "\(config.pages.count) pages, the board takes at most \(DeckConfig.maxPages)"))
         }
-        let bytes = LayoutSize.sealedBytes(config)
+        let bytes = LayoutSize.sealedBytes(config, sprites: env.sprites)
         if !LayoutPushPolicy.fits(frameBytes: bytes) {
             out.append(EditorIssue(
                 severity: .error, page: nil, widget: nil,

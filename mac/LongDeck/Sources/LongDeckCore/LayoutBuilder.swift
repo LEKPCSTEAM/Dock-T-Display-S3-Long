@@ -8,7 +8,8 @@ public struct BuiltLayout {
 
 public enum LayoutBuilder {
     public static func build(
-        _ config: DeckConfig, render: (KeyConfig) -> Data = FaceRenderer.render
+        _ config: DeckConfig, render: (KeyConfig) -> Data = FaceRenderer.render,
+        sprites: AgentSprites? = nil
     ) -> BuiltLayout {
         var faces: [UInt16: (w: UInt16, h: UInt16, pixels: Data)] = [:]
         var nextFace: UInt16 = 1
@@ -44,12 +45,38 @@ public enum LayoutBuilder {
             pages.append(["name": page.name, "widgets": widgets])
         }
 
-        let body = serialize(["pages": pages])
+        var root: [String: Any] = ["pages": pages]
+        let hasAgents = config.pages.contains { $0.live.contains { $0.kind == .claudeAgents } }
+        if hasAgents, let sprites, nextFace <= spriteFirstId {
+            root["agent_sprites"] = addSprites(sprites, to: &faces)
+        }
+
+        let body = serialize(root)
         var material = Data(body.utf8)
         for id in faces.keys.sorted() { material.append(faces[id]!.pixels) }
         let hash = String(DeckCrypto.hex(DeckCrypto.sha256(material)).prefix(16))
         let json = "{\"hash\":\"\(hash)\"," + body.dropFirst()
         return BuiltLayout(json: json, hash: hash, faces: faces)
+    }
+
+    private static let spriteFirstId: UInt16 = 129
+
+    private static func addSprites(
+        _ s: AgentSprites, to faces: inout [UInt16: (w: UInt16, h: UInt16, pixels: Data)]
+    ) -> [String: Any] {
+        for (i, pixels) in s.frames.enumerated() {
+            faces[spriteFirstId + UInt16(i)] = (UInt16(s.frameW), UInt16(s.frameH), pixels)
+        }
+        let hatFirst = spriteFirstId + UInt16(s.frames.count)
+        for (i, pixels) in s.hats.enumerated() {
+            faces[hatFirst + UInt16(i)] = (UInt16(s.hatW), UInt16(s.hatH), pixels)
+        }
+        return [
+            "w": s.frameW, "h": s.frameH, "first": Int(spriteFirstId),
+            "tags": s.tagRanges.map { [$0.lowerBound, $0.count] },
+            "ms": s.durationsMs, "hx": s.hatX, "hy": s.hatY,
+            "hats": [Int(hatFirst), s.hats.count], "hw": s.hatW, "hh": s.hatH,
+        ]
     }
 
     private static func serialize(_ object: [String: Any]) -> String {
