@@ -1,0 +1,146 @@
+{ "frames": [
+   {
+    "filename": "claude-agent 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 150
+   },
+   {
+    "filename": "claude-agent 1.aseprite",
+    "frame": { "x": 20, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 130
+   },
+   {
+    "filename": "claude-agent 2.aseprite",
+    "frame": { "x": 40, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 150
+   },
+   {
+    "filename": "claude-agent 3.aseprite",
+    "frame": { "x": 60, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 130
+   },
+   {
+    "filename": "claude-agent 4.aseprite",
+    "frame": { "x": 80, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 300
+   },
+   {
+    "filename": "claude-agent 5.aseprite",
+    "frame": { "x": 100, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 300
+   },
+   {
+    "filename": "claude-agent 6.aseprite",
+    "frame": { "x": 120, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 200
+   },
+   {
+    "filename": "claude-agent 7.aseprite",
+    "frame": { "x": 140, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 180
+   },
+   {
+    "filename": "claude-agent 8.aseprite",
+    "frame": { "x": 160, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 200
+   },
+   {
+    "filename": "claude-agent 9.aseprite",
+    "frame": { "x": 180, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 180
+   },
+   {
+    "filename": "claude-agent 10.aseprite",
+    "frame": { "x": 200, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 400
+   },
+   {
+    "filename": "claude-agent 11.aseprite",
+    "frame": { "x": 220, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 400
+   },
+   {
+    "filename": "claude-agent 12.aseprite",
+    "frame": { "x": 240, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 400
+   },
+   {
+    "filename": "claude-agent 13.aseprite",
+    "frame": { "x": 260, "y": 0, "w": 20, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 20, "h": 24 },
+    "sourceSize": { "w": 20, "h": 24 },
+    "duration": 400
+   }
+ ],
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "claude-agent.png",
+  "format": "RGBA8888",
+  "size": { "w": 280, "h": 24 },
+  "scale": "1",
+  "frameTags": [
+   { "name": "working", "from": 0, "to": 3, "direction": "forward", "color": "#000000ff" },
+   { "name": "permission", "from": 4, "to": 5, "direction": "forward", "color": "#000000ff" },
+   { "name": "waiting", "from": 6, "to": 9, "direction": "forward", "color": "#000000ff" },
+   { "name": "done", "from": 10, "to": 13, "direction": "forward", "color": "#000000ff" }
+  ],
+  "slices": [
+   { "name": "hat", "keys": [{ "frame": 0, "bounds": {"x": 0, "y": 2, "w": 20, "h": 10 } }] }
+  ]
+ }
+}

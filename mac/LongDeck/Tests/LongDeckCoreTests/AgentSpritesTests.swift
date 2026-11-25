@@ -173,6 +173,19 @@ private func agentsConfig() -> DeckConfig {
         _ = AgentSprites.bundled()
     }
 
+    @Test func bundledSpritesLoad() throws {
+        let s = try #require(AgentSprites.bundled())
+        #expect(s.tagRanges.count == 4)
+        #expect(s.tagRanges.map(\.count) == [4, 2, 4, 4])
+        #expect(s.hats.count == 8)
+        #expect(s.frameW == 60 && s.frameH == 72)
+        #expect(s.hatW == 60 && s.hatH == 30)
+        #expect(s.hatY.allSatisfy { $0 == 6 })
+        // Native (8, 13) of working frame 1 is body orange #D97757.
+        let at = ((13 * 3 + 1) * s.frameW + (8 * 3 + 1)) * 3
+        #expect(Array(s.frames[0][at..<at + 3]) == FaceRenderer.pack(r: 0xD9, g: 0x77, b: 0x57, a: 255))
+    }
+
     @Test func layoutUnchangedWithoutAgentsWidget() throws {
         let s = try Fixture().load()
         let plain = LayoutBuilder.build(SampleConfig.dev, render: stub)
