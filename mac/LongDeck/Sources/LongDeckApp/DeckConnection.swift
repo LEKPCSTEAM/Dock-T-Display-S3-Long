@@ -18,6 +18,7 @@ final class DeckConnection {
     private let pairing: Bool
     private let runner: ActionRunner
     private let configProvider: () -> DeckConfig?
+    private let spritesProvider: () -> AgentSprites?
     private let onEvent: (ConnectionEvent) -> Void
     private let volume: VolumeControl
     private let claudeBody: () -> String?
@@ -40,8 +41,8 @@ final class DeckConnection {
 
     init(
         board: DiscoveredBoard, pairing: Bool, runner: ActionRunner,
-        configProvider: @escaping () -> DeckConfig?, volume: VolumeControl,
-        claudeBody: @escaping () -> String?, onClaudeAction: @escaping (String) -> Void,
+        configProvider: @escaping () -> DeckConfig?, spritesProvider: @escaping () -> AgentSprites?,
+        volume: VolumeControl, claudeBody: @escaping () -> String?, onClaudeAction: @escaping (String) -> Void,
         onEvent: @escaping (ConnectionEvent) -> Void
     ) {
         self.volume = volume
@@ -51,6 +52,7 @@ final class DeckConnection {
         self.pairing = pairing
         self.runner = runner
         self.configProvider = configProvider
+        self.spritesProvider = spritesProvider
         self.onEvent = onEvent
         handshake = DeckHandshake(
             storedKey: { pairing ? nil : KeyStore.load(boardId: $0) },
@@ -111,7 +113,7 @@ final class DeckConnection {
 
     func push(config: DeckConfig) {
         guard sealer != nil else { return }
-        let built = LayoutBuilder.build(config, sprites: AgentSprites.bundled())
+        let built = LayoutBuilder.build(config, sprites: spritesProvider())
         guard built.hash != boardHash else { return }
         send(built)
     }

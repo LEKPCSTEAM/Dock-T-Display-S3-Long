@@ -56,6 +56,10 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 - `claude_sessions` — แถวละ session: จุดสี accent = working, เหลือง = รอ permission, เขียว = waiting (เสร็จแล้วรอ prompt), เทา = อื่น ๆ ถ้าเกินจำนวนแถวจะขึ้น `+N more`
 - `claude_usage` — 5h / 7d เป็น % พร้อม countdown reset: bar สี accent ปกติ, เหลืองเมื่อ ≥ 80%, แดงเมื่อ ≥ 95%
 - `claude_agents` (ขั้นต่ำ 2x1) — tile ละ session (live + ที่จบใน 7 วัน สูงสุด 24) ตัวละคร pixel ขยับตาม state ใส่หมวกสีประจำชื่อ: working / permission มีมุมสีส้ม, waiting ขึ้น `hungry · feed me` บนพื้นลายทาง, done ขึ้น `done · 5m ago` ป้าย `x3` = subagent ที่รันอยู่ pill ขวาบน = session ที่ working + subagent ทั้งหมด ลากขึ้นลงเพื่อเลื่อน tile (ปัดซ้ายขวายังเปลี่ยนหน้า) แตะ = focus, กดค้าง tile ที่ working = interrupt, tile ที่จบแล้วไม่รับ input
+  - History: session ที่จบแล้วเก็บใน `~/Library/Application Support/LongDeck/claude-history.json` บน Mac (7 วัน) tile จึงยังอยู่หลัง quit แล้วเปิดแอปใหม่
+  - นับ subagent ต้องมี hook `SubagentStart` / `SubagentStop`: ถ้า hook เก่า ให้กด "Reinstall Claude hooks (adds subagent count)" จากเมนูแอป แล้ว restart session ของ Claude Code
+  - Sprites: วางไฟล์ `claude-agent.png/.json` + `claude-hats.png/.json` ใน `~/Library/Application Support/LongDeck/sprites/` เพื่อแทนของที่มากับแอป แอป push ให้บอร์ดเองเมื่อไฟล์เปลี่ยน
+  - วาดใหม่: แก้ `mac/LongDeck/Art/*.aseprite` แล้วรัน `mac/LongDeck/Art/export.sh` (รับ absolute out-dir เป็น argument ได้)
 - Mac offline, ยังไม่ Install หรือ listener ของแอปยังไม่ทำงาน: ทุก widget แสดง `--` (หลัง Uninstall หรือ listener ล่ม จะขึ้น `No sessions` จนกว่าบอร์ดจะ reconnect)
 
 แตะแถว session = focus หน้าต่าง iTerm2/tmux ของ session นั้น, กดค้างแถวที่กำลัง working = interrupt (Escape ส่งเฉพาะตอนจอ Claude Code ขึ้น `esc to interrupt`)

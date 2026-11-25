@@ -46,6 +46,7 @@ public final class EditorStore: ObservableObject {
         return scanned
     }
 
+    var sprites: AgentSprites? { environment.sprites }
     public var isDirty: Bool { model.isDirty }
     public var canSave: Bool { model.isDirty && !issues.contains { $0.severity == .error } }
 

@@ -7,12 +7,14 @@ import Security
 final class ClaudeController: ObservableObject {
     @Published private(set) var installed = false
     @Published private(set) var statusText = "Claude: not installed"
+    @Published private(set) var hooksCurrent = true
 
     var onBody: ((String) -> Void)?
     private(set) var currentBody = ""
     private static let emptyBody = #"{"prompt":null,"sessions":[],"usage":{"five_hour":null,"seven_day":null}}"#
 
     private var store = ClaudeStore(runTag: String(UUID().uuidString.prefix(4)).lowercased())
+    private let names = ClaudeNames(runner: ProcessTmuxRunner())
     private var listener: ClaudeListener?
     private var listening = false
     private var listenerError: String?
@@ -36,8 +38,10 @@ final class ClaudeController: ObservableObject {
     }
 
     func start() {
+        store.history = ClaudeHistory.load(from: Self.historyURL)
         if let state = ClaudeInstaller.loadState(Self.livePaths()) {
             installed = true
+            hooksCurrent = ClaudeInstaller.isCurrent(Self.livePaths())
             startListener(token: state.token)
         }
         publish()
@@ -72,6 +76,7 @@ final class ClaudeController: ObservableObject {
             let token = try Self.makeToken()
             let state = try ClaudeInstaller.install(paths, token: token, now: Date())
             installed = true
+            hooksCurrent = ClaudeInstaller.isCurrent(paths)
             startListener(token: state.token)
             publish()
             let done = NSAlert()
@@ -107,7 +112,10 @@ final class ClaudeController: ObservableObject {
         retryTask?.cancel()
         listenerError = nil
         installed = false
+        hooksCurrent = true
+        let kept = store.history
         store = ClaudeStore(runTag: String(UUID().uuidString.prefix(4)).lowercased())
+        store.history = kept
         inFlight = []
         publish()
     }
@@ -197,15 +205,37 @@ final class ClaudeController: ObservableObject {
         case .hook:
             guard let event = ClaudeHookEvent.decode(inbound.body) else { return }
             store.apply(event, pane: inbound.pane, now: monotonic)
+            if let pane = inbound.pane { lookUpName(pane: pane, session: event.sessionId) }
         case .statusLine:
             guard let update = ClaudeStatusUpdate.decode(inbound.body) else { return }
             store.apply(update, pane: inbound.pane, now: monotonic)
         }
+        persistHistory()
         publish()
+    }
+
+    private func lookUpName(pane: String, session: String) {
+        let (names, now) = (names, monotonic)
+        Task { @MainActor [weak self] in
+            let name = await Task.detached { names.name(forPane: pane, now: now) }.value
+            guard let self, let name else { return }
+            store.setName(name, forSession: session)
+            publish()
+        }
+    }
+
+    private func persistHistory() {
+        guard store.historyChanged else { return }
+        store.historyChanged = false
+        store.history.prune(now: Date().timeIntervalSince1970)
+        try? FileManager.default.createDirectory(
+            at: Self.historyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        do { try store.history.save(to: Self.historyURL) } catch { NSLog("LongDeck: history save failed: \(error)") }
     }
 
     private func tick() {
         store.expire(now: monotonic, wall: Date())
+        persistHistory()
         for (session, pending) in store.pendingPrompts() {
             guard let pane = session.pane, !busyPanes.contains(pane), inFlight.insert(pending.request).inserted else { continue }
             let (sessionId, request) = (session.id, pending.request)
@@ -258,6 +288,8 @@ final class ClaudeController: ObservableObject {
         alert.informativeText = "\(error)"
         alert.runModal()
     }
+
+    private static var historyURL: URL { livePaths().supportDir.appendingPathComponent("claude-history.json") }
 
     private static func livePaths() -> ClaudeInstallPaths {
         let fm = FileManager.default

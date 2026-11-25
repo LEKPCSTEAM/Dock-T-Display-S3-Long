@@ -50,6 +50,12 @@ import Testing
         try snap(PageListView(store: withNewKey()), CGSize(width: 200, height: 360), "pages")
     }
 
+    @Test func claudeAgentsPlaceholder() throws {
+        let sprites = try #require(AgentSprites.bundled())
+        let view = LivePlaceholderView(kind: .claudeAgents, size: CellSize(w: 8, h: 2), scale: 1, sprites: sprites)
+        try snap(view, CGSize(width: 640, height: 180), "claude-agents-placeholder")
+    }
+
     @Test func undoRoutingSkipsTextEditing() {
         #expect(UndoRouting.storeHandlesUndo(firstResponder: nil))
         #expect(UndoRouting.storeHandlesUndo(firstResponder: NSView()))

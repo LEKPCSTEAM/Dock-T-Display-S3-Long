@@ -5,11 +5,13 @@ struct LivePlaceholderView: View {
     let kind: LiveKind
     let size: CellSize
     let scale: CGFloat
+    let sprites: AgentSprites?
 
-    init(kind: LiveKind, size: CellSize, scale: CGFloat) {
+    init(kind: LiveKind, size: CellSize, scale: CGFloat, sprites: AgentSprites? = nil) {
         self.kind = kind
         self.size = size
         self.scale = scale
+        self.sprites = sprites
     }
 
     private var width: CGFloat { CGFloat(size.w * 80 - 6) * scale }
@@ -77,11 +79,89 @@ struct LivePlaceholderView: View {
             }
             .frame(maxHeight: .infinity)
         case .claudeAgents:
-            Text("Claude agents")
-                .font(.system(size: 14 * scale, weight: .semibold))
-                .foregroundColor(BoardColors.text)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let sprites {
+                HStack(spacing: 6 * scale) {
+                    ForEach(0..<min(Self.sampleAgents.count, max(1, size.w / 2)), id: \.self) { index in
+                        agentTile(sprites, Self.sampleAgents[index], state: index)
+                    }
+                }
+            } else {
+                Text("Claude agents")
+                    .font(.system(size: 14 * scale, weight: .semibold))
+                    .foregroundColor(BoardColors.text)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
+    }
+
+    private static let sampleAgents = ["Agents Deck", "CMM iOS", "Heritage", "Wall Panel"]
+    private static let stateColors = [BoardColors.ok, BoardColors.warn, BoardColors.textDim, BoardColors.panelHi]
+    private static let hatTints = ["#4ADE80", "#60A5FA", "#F472B6", "#FBBF24", "#A78BFA", "#F87171", "#2DD4BF", "#F2F4F7"]
+    private static let hatOpacity: UInt8 = 153
+
+    private func agentTile(_ sprites: AgentSprites, _ name: String, state: Int) -> some View {
+        VStack(spacing: 2 * scale) {
+            if let image = Self.agentImage(sprites, name: name, state: state) {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+            }
+            Text(name)
+                .font(.system(size: 9 * scale))
+                .foregroundColor(BoardColors.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .padding(4 * scale)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: 6 * scale).fill(BoardColors.panelHi))
+        .overlay(alignment: .topTrailing) {
+            Circle().fill(Self.stateColors[state % Self.stateColors.count])
+                .frame(width: 6 * scale, height: 6 * scale)
+                .padding(4 * scale)
+        }
+    }
+
+    static func agentImage(_ sprites: AgentSprites, name: String, state: Int) -> CGImage? {
+        guard state < sprites.tagRanges.count else { return nil }
+        let frame = sprites.tagRanges[state].lowerBound
+        guard frame < sprites.frames.count else { return nil }
+        let (hat, tint) = AgentHat.of(name)
+        guard hat < sprites.hats.count, let rgb = HexColor.parse(hatTints[tint]) else { return nil }
+        let tint565 = rgb565(rgb)
+        let (w, h) = (sprites.frameW, sprites.frameH)
+        let src = [UInt8](sprites.frames[frame]), hatSrc = [UInt8](sprites.hats[hat])
+        var out = [UInt8](repeating: 0, count: w * h * 3)
+        for i in 0..<(w * h) where i * 3 + 2 < src.count {
+            let base = FacePreview.mix(word(src, i), FacePreview.panel565, alpha: src[i * 3 + 2])
+            put(&out, i, base)
+        }
+        for y in 0..<sprites.hatH {
+            for x in 0..<sprites.hatW {
+                let (px, py) = (sprites.hatX[frame] + x, sprites.hatY[frame] + y)
+                let j = y * sprites.hatW + x
+                guard px < w, py < h, j * 3 + 2 < hatSrc.count else { continue }
+                let tinted = FacePreview.mix(tint565, word(hatSrc, j), alpha: hatOpacity)
+                let i = py * w + px
+                put(&out, i, FacePreview.mix(tinted, word(out, i), alpha: hatSrc[j * 3 + 2]))
+            }
+        }
+        for i in 0..<(w * h) { out[i * 3 + 2] = 255 }
+        return FacePreview.image(face: Data(out), width: w, height: h)
+    }
+
+    private static func word(_ bytes: [UInt8], _ i: Int) -> UInt16 {
+        UInt16(bytes[i * 3]) << 8 | UInt16(bytes[i * 3 + 1])
+    }
+
+    private static func put(_ bytes: inout [UInt8], _ i: Int, _ v: UInt16) {
+        bytes[i * 3] = UInt8(v >> 8)
+        bytes[i * 3 + 1] = UInt8(v & 0xFF)
+    }
+
+    private static func rgb565(_ c: (r: UInt8, g: UInt8, b: UInt8)) -> UInt16 {
+        UInt16(c.r >> 3) << 11 | UInt16(c.g >> 2) << 5 | UInt16(c.b >> 3)
     }
 
     private func bar(fraction: CGFloat) -> some View {

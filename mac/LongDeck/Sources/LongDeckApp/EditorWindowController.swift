@@ -23,7 +23,8 @@ final class EditorWindowController: NSObject, NSWindowDelegate {
         }
         guard let model else { return }
         let doc = model.editorDocument()
-        let store = EditorStore(config: doc.config, onDisk: doc.onDisk, diskError: doc.diskError)
+        let store = EditorStore(config: doc.config, onDisk: doc.onDisk, diskError: doc.diskError,
+                                environment: model.editorEnvironment())
         store.onSave = { [weak model] in model?.saveFromEditor($0) ?? .failed("LongDeck is quitting") }
         model.onConfigApplied = { [weak store] in store?.externalChange($0) }
         model.onConfigInvalid = { [weak store] in store?.externalInvalid($0) }

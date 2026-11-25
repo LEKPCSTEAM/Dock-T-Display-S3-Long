@@ -68,6 +68,15 @@ Config entries (the first-run sample has a `Claude` page; `claude_sessions` need
     {"id":"ccs","type":"claude_sessions","col":0,"row":0,"w":4,"h":2}
     {"id":"ccu","type":"claude_usage","col":4,"row":0,"w":4,"h":1}
 
+### Claude agents widget
+
+`claude_agents` (ขั้นต่ำ 2x1) แสดง tile ละ session เป็นตัวละคร pixel ใส่หมวกสีประจำชื่อ ใน editor จะเห็นเป็น tile ตัวอย่าง 4 state (working, permission, waiting, done) ชื่อ session มาจาก tmux session name (`tmux display-message -p '#S'`, cache 30 วินาที) ถ้าไม่มีจะใช้ชื่อโฟลเดอร์ของ project
+
+- History: session ที่จบแล้วเก็บไว้ 7 วันใน `~/Library/Application Support/LongDeck/claude-history.json` (owner-only) เพื่อให้ tile ยังอยู่หลัง quit แล้วเปิด LongDeck ใหม่ ลบไฟล์นี้ได้ถ้าอยากล้าง tile ที่จบแล้ว
+- Subagent count: ต้องมี hook `SubagentStart` / `SubagentStop` ถ้า hook ที่ติดตั้งไว้เป็นรุ่นเก่า เมนูจะขึ้น "Reinstall Claude hooks (adds subagent count)" กดแล้ว restart Claude Code session
+- Sprites override: วางไฟล์ `claude-agent.png/.json` และ `claude-hats.png/.json` ใน `~/Library/Application Support/LongDeck/sprites/` แอปจะใช้แทนของที่มากับตัวแอป (ต้องมีครบ 4 ไฟล์ ไม่งั้นใช้ของเดิม) และ push ให้บอร์ดอัตโนมัติเมื่อไฟล์เปลี่ยน ขนาด layout ที่ Save ถูกตรวจด้วย sprites ชุดเดียวกัน
+- วาดใหม่: แก้ `Art/claude-agent.aseprite` หรือ `Art/claude-hats.aseprite` แล้วรัน `Art/export.sh` (ค่าเริ่มต้นเขียนลง `Sources/LongDeckCore/Resources/sprites/`, ใส่ absolute out-dir เป็น argument เพื่อส่งออกไปที่อื่น เช่น โฟลเดอร์ override ด้านบน) แล้ว `./scripts/bundle.sh` เพื่อใส่ใน app bundle
+
 ## Pairing
 
 Choose "Pair with board…", pick the board, then type the 6-digit code shown on its screen. The key is stored in the login Keychain (service `dev.longdeck.LongDeck`).

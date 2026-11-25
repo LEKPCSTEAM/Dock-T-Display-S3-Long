@@ -38,9 +38,14 @@ final class AppModel: ObservableObject {
     static let configURL = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("LongDeck/config.json")
+    static let spritesDir = configURL.deletingLastPathComponent().appendingPathComponent("sprites", isDirectory: true)
+    private static let spriteFiles = ["claude-agent.json", "claude-agent.png", "claude-hats.json", "claude-hats.png"]
     private static let lastBoardKey = "lastBoardId"
 
     private var config: DeckConfig?
+    private var sprites: AgentSprites?
+    private var spriteWatchers: [DispatchSourceFileSystemObject] = []
+    private var spriteDebounce: Task<Void, Never>?
     private var connection: DeckConnection?
     private var policy = ReconnectPolicy()
     private var retryTask: Task<Void, Never>?
@@ -56,8 +61,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var isTrusted = true
 
     func start() {
+        sprites = Self.loadSprites()
         reloadConfig()
         watchConfig()
+        armSpriteWatchers()
         observeSleep()
         refreshTrust()
         trustTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
@@ -128,9 +135,47 @@ final class AppModel: ObservableObject {
         (config ?? SampleConfig.dev, config != nil && configError == nil, configError)
     }
 
+    func editorEnvironment() -> IssueEnvironment {
+        IssueEnvironment(
+            fileExists: { FileManager.default.fileExists(atPath: $0) },
+            symbolExists: { SymbolCatalog.exists($0) },
+            sprites: sprites)
+    }
+
+    private static func loadSprites() -> AgentSprites? {
+        AgentSprites.loadFiles(in: spritesDir) ?? AgentSprites.bundled()
+    }
+
+    private func armSpriteWatchers() {
+        spriteWatchers.forEach { $0.cancel() }
+        spriteWatchers = []
+        try? FileManager.default.createDirectory(at: Self.spritesDir, withIntermediateDirectories: true)
+        let paths = [Self.spritesDir.path] + Self.spriteFiles.map { Self.spritesDir.appendingPathComponent($0).path }
+        spriteWatchers = paths.compactMap {
+            makeWatcher(path: $0, mask: [.write, .extend, .delete, .rename]) { [weak self] in self?.scheduleSpriteReload() }
+        }
+    }
+
+    private func scheduleSpriteReload() {
+        spriteDebounce?.cancel()
+        spriteDebounce = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            self?.reloadSprites()
+            self?.armSpriteWatchers()
+        }
+    }
+
+    private func reloadSprites() {
+        let loaded = Self.loadSprites()
+        guard loaded != sprites else { return }
+        sprites = loaded
+        if let config { connection?.push(config: config) }
+    }
+
     func saveFromEditor(_ config: DeckConfig) -> SaveOutcome {
         do {
-            let data = try ConfigSaver.prepare(config)
+            let data = try ConfigSaver.prepare(config, sprites: sprites)
             try ConfigSaver.write(data, to: Self.configURL)
             writeGuard.recordWrite(data)
             apply(config)
@@ -220,7 +265,8 @@ final class AppModel: ObservableObject {
         status = pairing ? .pairing : .connecting
         let conn = DeckConnection(
             board: board, pairing: pairing, runner: ActionRunner(system: system),
-            configProvider: { [weak self] in self?.config }, volume: volume,
+            configProvider: { [weak self] in self?.config }, spritesProvider: { [weak self] in self?.sprites },
+            volume: volume,
             claudeBody: { [weak self] in self?.claude.currentBody.isEmpty == false ? self?.claude.currentBody : nil },
             onClaudeAction: { [weak self] body in
                 self?.claude.handleAction(body) { [weak self] ack in self?.connection?.sendClaudeAck(ack) }
@@ -285,11 +331,15 @@ final class AppModel: ObservableObject {
         fileWatcher = makeWatcher(path: Self.configURL.path, mask: [.write, .extend, .delete, .rename])
     }
 
-    private func makeWatcher(path: String, mask: DispatchSource.FileSystemEvent) -> DispatchSourceFileSystemObject? {
+    private func makeWatcher(
+        path: String, mask: DispatchSource.FileSystemEvent, onChange: (@MainActor () -> Void)? = nil
+    ) -> DispatchSourceFileSystemObject? {
         let fd = open(path, O_EVTONLY)
         guard fd >= 0 else { return nil }
         let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: mask, queue: .main)
-        source.setEventHandler { [weak self] in self?.scheduleReload() }
+        source.setEventHandler { [weak self] in
+            if let onChange { onChange() } else { self?.scheduleReload() }
+        }
         source.setCancelHandler { close(fd) }
         source.resume()
         return source

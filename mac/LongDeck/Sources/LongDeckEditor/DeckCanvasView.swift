@@ -96,7 +96,8 @@ public struct DeckCanvasView: View {
                 Rectangle().fill(BoardColors.panel)
             }
         case .live(let live):
-            LivePlaceholderView(kind: live.kind, size: CellSize(w: live.w, h: live.h), scale: scale)
+            LivePlaceholderView(kind: live.kind, size: CellSize(w: live.w, h: live.h), scale: scale,
+                                sprites: store.sprites)
         }
     }
 
