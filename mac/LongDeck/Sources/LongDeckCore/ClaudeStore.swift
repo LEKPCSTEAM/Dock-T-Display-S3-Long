@@ -23,6 +23,10 @@ public struct ClaudeSession: Equatable, Sendable {
     public var costUSD: Double?
     public var contextPct: Double?
     public var queue: [ClaudePending] = []
+    public var name: String?
+    public var lastTool: String?
+    public var subagents: [String: TimeInterval] = [:]
+    public var sinceWall: TimeInterval = 0
 
     public var pending: ClaudePending? { queue.first }
     public var pendingCount: Int { queue.count }
@@ -31,7 +35,8 @@ public struct ClaudeSession: Equatable, Sendable {
 public struct ClaudeStore: Sendable {
     public static let silentLimit: TimeInterval = 1800
     public static let unseenGrace: TimeInterval = 5
-    private static let maxSessions = 8
+    private static let maxSessions = 24
+    public static let subagentLimit: TimeInterval = 7200
     public static let tombstoneTTL: TimeInterval = 600
     private static let maxIdBytes = 39
     private static let maxQueue = 16
@@ -39,6 +44,7 @@ public struct ClaudeStore: Sendable {
     private let runTag: String
     private var requestCount = 0
     private var ended: [String: TimeInterval] = [:]
+    private var anchor: (mono: TimeInterval, wall: TimeInterval) = (0, 0)
     public private(set) var sessions: [String: ClaudeSession] = [:]
     public private(set) var fiveHour: UsageWindow?
     public private(set) var sevenDay: UsageWindow?
@@ -47,7 +53,14 @@ public struct ClaudeStore: Sendable {
         self.runTag = runTag
     }
 
-    public mutating func apply(_ e: ClaudeHookEvent, pane: String?, now: TimeInterval) {
+    public mutating func setName(_ name: String, forSession id: String) {
+        guard var s = sessions[id] else { return }
+        s.name = name
+        sessions[id] = s
+    }
+
+    public mutating func apply(_ e: ClaudeHookEvent, pane: String?, now: TimeInterval, wall: Date = Date()) {
+        anchor = (now, wall.timeIntervalSince1970)
         if e.event == "SessionEnd" {
             sessions[e.sessionId] = nil
             ended[e.sessionId] = now
@@ -58,7 +71,8 @@ public struct ClaudeStore: Sendable {
         } else if isEnded(e.sessionId, now) {
             return
         }
-        var s = sessions[e.sessionId] ?? ClaudeSession(id: e.sessionId, state: .waiting, stateSince: now, lastSeen: now)
+        var s = sessions[e.sessionId] ?? ClaudeSession(id: e.sessionId, state: .waiting, stateSince: now, lastSeen: now,
+                                                       sinceWall: anchor.wall)
         s.lastSeen = now
         if let cwd = e.cwd { s.cwd = cwd }
         if let pane {
@@ -73,7 +87,12 @@ public struct ClaudeStore: Sendable {
             s.queue = []
             set(&s, .working, now)
         case "PreToolUse":
+            s.lastTool = e.toolName.map(ClaudeText.toolLabel)
             if s.queue.isEmpty { set(&s, .working, now) }
+        case "SubagentStart":
+            if let id = e.agentId { s.subagents[id] = now }
+        case "SubagentStop":
+            if let id = e.agentId { s.subagents[id] = nil }
         case "PermissionRequest":
             // Claude Code shows parallel prompts oldest first, so queue in order.
             if s.queue.count < Self.maxQueue {
@@ -110,7 +129,8 @@ public struct ClaudeStore: Sendable {
 
     public mutating func apply(_ u: ClaudeStatusUpdate, pane: String?, now: TimeInterval) {
         if isEnded(u.sessionId, now) { return }
-        var s = sessions[u.sessionId] ?? ClaudeSession(id: u.sessionId, state: .waiting, stateSince: now, lastSeen: now)
+        var s = sessions[u.sessionId] ?? ClaudeSession(id: u.sessionId, state: .waiting, stateSince: now,
+                                                       lastSeen: now, sinceWall: wallTime(now))
         s.lastSeen = now
         if let pane {
             claimPane(pane, for: u.sessionId, now: now)
@@ -129,6 +149,7 @@ public struct ClaudeStore: Sendable {
         sessions = sessions.filter { now - $0.value.lastSeen <= Self.silentLimit }
         ended = ended.filter { now - $0.value <= Self.tombstoneTTL }
         let t = wall.timeIntervalSince1970
+        anchor = (now, t)
         if let w = fiveHour, t >= w.resetsAt { fiveHour = nil }
         if let w = sevenDay, t >= w.resetsAt { sevenDay = nil }
     }
@@ -198,10 +219,30 @@ public struct ClaudeStore: Sendable {
                 return a.id < b.id
             }
             .prefix(Self.maxSessions)
+        let wall = now.timeIntervalSince1970
+        let agentsTotal = sessions.values.reduce(0) {
+            $0 + ($1.state == .working ? 1 : 0) + runningSubagents($1, wall: wall)
+        }
         let list: [[String: Any]] = shown.map { s in
-            [
+            let project = ClaudeText.project(s.projectDir ?? s.cwd)
+            let name = s.name.map { ClaudeText.prefix($0, bytes: 23) }.flatMap { $0.isEmpty ? nil : $0 } ?? project
+            let tool: String
+            switch s.state {
+            case .permission: tool = s.pending.map { ClaudeText.toolLabel($0.toolName) } ?? ""
+            case .working: tool = s.lastTool ?? ""
+            default: tool = ""
+            }
+            let hat = AgentHat.of(name)
+            return [
                 "id": s.id,
-                "project": ClaudeText.project(s.projectDir ?? s.cwd),
+                "project": project,
+                "name": name,
+                "tool": ClaudeText.capped(tool.lowercased(), bytes: 15),
+                "agents": runningSubagents(s, wall: wall),
+                "since": Self.clampedInt(s.sinceWall, 0, 4_000_000_000_000),
+                "hat": hat.hat,
+                "tint": hat.tint,
+                "live": true,
                 "model": s.model.map { ClaudeText.capped($0, bytes: 15) } ?? "",
                 "state": s.state.rawValue,
                 "ctx": s.contextPct.map { Self.clampedInt($0, 0, 100) } ?? -1,
@@ -225,13 +266,14 @@ public struct ClaudeStore: Sendable {
             ] as [String: Any]
         }
         let root: [String: Any] = [
+            "agents_total": agentsTotal,
             "prompt": prompt,
             "sessions": list,
             "usage": ["five_hour": windowJSON(fiveHour, now), "seven_day": windowJSON(sevenDay, now)],
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: root,
                                                      options: [.sortedKeys, .withoutEscapingSlashes])
-        else { return "{\"prompt\":null,\"sessions\":[],\"usage\":{\"five_hour\":null,\"seven_day\":null}}" }
+        else { return "{\"agents_total\":0,\"prompt\":null,\"sessions\":[],\"usage\":{\"five_hour\":null,\"seven_day\":null}}" }
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -265,15 +307,23 @@ public struct ClaudeStore: Sendable {
         if s.state != state {
             s.state = state
             s.stateSince = now
+            s.sinceWall = wallTime(now)
         }
+    }
+
+    private func wallTime(_ mono: TimeInterval) -> TimeInterval { anchor.wall + (mono - anchor.mono) }
+
+    private func runningSubagents(_ s: ClaudeSession, wall: TimeInterval) -> Int {
+        let mono = anchor.mono + (wall - anchor.wall)
+        return s.subagents.values.filter { mono - $0 <= Self.subagentLimit }.count
     }
 
     private static func rank(_ state: ClaudeState) -> Int {
         switch state {
         case .permission: return 0
         case .waiting: return 1
-        case .done: return 2
-        case .working: return 3
+        case .working: return 2
+        case .done: return 3
         }
     }
 }

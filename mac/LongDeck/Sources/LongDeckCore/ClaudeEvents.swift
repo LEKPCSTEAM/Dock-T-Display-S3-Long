@@ -7,15 +7,20 @@ public struct ClaudeHookEvent: Equatable, Sendable {
     public var toolName: String?
     public var toolInputJSON: String?
     public var notificationType: String?
+    public var agentId: String?
+    public var agentType: String?
 
     public init(sessionId: String, event: String, cwd: String? = nil, toolName: String? = nil,
-                toolInputJSON: String? = nil, notificationType: String? = nil) {
+                toolInputJSON: String? = nil, notificationType: String? = nil,
+                agentId: String? = nil, agentType: String? = nil) {
         self.sessionId = sessionId
         self.event = event
         self.cwd = cwd
         self.toolName = toolName
         self.toolInputJSON = toolInputJSON
         self.notificationType = notificationType
+        self.agentId = agentId
+        self.agentType = agentType
     }
 
     public static func decode(_ body: Data) -> ClaudeHookEvent? {
@@ -31,7 +36,8 @@ public struct ClaudeHookEvent: Equatable, Sendable {
         }
         return ClaudeHookEvent(sessionId: sessionId, event: event, cwd: object["cwd"] as? String,
                                toolName: object["tool_name"] as? String, toolInputJSON: toolInputJSON,
-                               notificationType: object["notification_type"] as? String)
+                               notificationType: object["notification_type"] as? String,
+                               agentId: object["agent_id"] as? String, agentType: object["agent_type"] as? String)
     }
 }
 

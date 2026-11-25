@@ -66,7 +66,22 @@ private func parsed(_ text: String) throws -> JSONValue { try JSONText.parse(Dat
     @Test func hookEventsIncludePostToolUseFailure() {
         #expect(ClaudeInstaller.hookEvents == ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
                                                "PostToolUseFailure", "PermissionRequest", "Notification", "Stop",
-                                               "SessionEnd"])
+                                               "SessionEnd", "SubagentStart", "SubagentStop"])
+    }
+
+    @Test func isCurrentNeedsSubagentHooks() throws {
+        #expect(ClaudeInstaller.hookEvents.contains("SubagentStart"))
+        #expect(ClaudeInstaller.hookEvents.contains("SubagentStop"))
+        let env = try makeEnv(settings: "{}")
+        #expect(!ClaudeInstaller.isCurrent(env.paths))
+        let old = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
+                   "PermissionRequest", "Notification", "Stop", "SessionEnd"]
+        let entries = old.map { "\"\($0)\":[\(env.expectedGroup)]" }.joined(separator: ",")
+        try env.write("{\"hooks\":{\(entries)}}")
+        #expect(!ClaudeInstaller.isCurrent(env.paths))
+        try env.write("{}")
+        try ClaudeInstaller.install(env.paths, token: token, now: now)
+        #expect(ClaudeInstaller.isCurrent(env.paths))
     }
 
     @Test func installAddsCommandHooksBesideExisting() throws {
@@ -83,9 +98,7 @@ private func parsed(_ text: String) throws -> JSONValue { try JSONText.parse(Dat
         }
         #expect(groups(before, "PostToolUseFailure").isEmpty)
         #expect(!JSONText.compact(after).contains(token))
-        for ev in ["StopFailure", "SubagentStop"] {
-            #expect(groups(after, ev) == groups(before, ev))
-        }
+        #expect(groups(after, "StopFailure") == groups(before, "StopFailure"))
         guard case .object(let b) = before, case .object(let a) = after else { Issue.record("not objects"); return }
         #expect(a.map(\.key) == b.map(\.key))
         for m in b where m.key != "hooks" && m.key != "statusLine" {
@@ -133,7 +146,7 @@ private func parsed(_ text: String) throws -> JSONValue { try JSONText.parse(Dat
         try ClaudeInstaller.install(env.paths, token: token, now: now)
         let st = try #require(ClaudeInstaller.loadState(env.paths))
         #expect(st.previousStatusLine == "{\"type\":\"command\",\"command\":\"ccstatusline\",\"padding\":0,\"refreshInterval\":10}")
-        #expect(st.createdEvents == ["PostToolUseFailure"])
+        #expect(st.createdEvents == ["PostToolUseFailure", "SubagentStart"])
         #expect(st.token == token)
         #expect(st.port == 47821)
         #expect(!st.createdHooksKey)

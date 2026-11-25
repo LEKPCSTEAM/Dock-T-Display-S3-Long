@@ -15,6 +15,18 @@ public enum ClaudeText {
         return out + "…"
     }
 
+    public static func prefix(_ s: String, bytes: Int) -> String {
+        var out = ""
+        var used = 0
+        for ch in clean(s) {
+            let n = String(ch).utf8.count
+            if used + n > bytes { break }
+            out.append(ch)
+            used += n
+        }
+        return out
+    }
+
     public static func cappedLeft(_ s: String, bytes: Int) -> String {
         let clean = clean(s)
         guard clean.utf8.count > bytes else { return clean }

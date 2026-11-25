@@ -2,15 +2,15 @@ import Foundation
 import Testing
 @testable import LongDeckCore
 
-private let c1 = #"{"prompt":{"pending":1,"project":"T-Display-S3-Long","request":"a3f9-1","session":"5f0c6c1e-2b7a-4c55-9a51-0d7f3b1c9e42","summary":"pio run -e ntp_clock","tmux":true,"tool":"Bash"},"sessions":[{"cost_cents":142,"ctx":37,"id":"5f0c6c1e-2b7a-4c55-9a51-0d7f3b1c9e42","model":"Opus 5.5","project":"T-Display-S3-Long","state":"permission","tmux":true},{"cost_cents":-1,"ctx":-1,"id":"9b2d7e00-1111-4222-8333-444455556666","model":"","project":"caltera","state":"working","tmux":false}],"usage":{"five_hour":{"pct":42,"resets_at":1795530000},"seven_day":{"pct":13,"resets_at":1795900000}}}"#
-private let c2 = #"{"prompt":null,"sessions":[],"usage":{"five_hour":null,"seven_day":null}}"#
+private let c1 = #"{"agents_total":1,"prompt":{"pending":1,"project":"T-Display-S3-Long","request":"a3f9-1","session":"5f0c6c1e-2b7a-4c55-9a51-0d7f3b1c9e42","summary":"pio run -e ntp_clock","tmux":true,"tool":"Bash"},"sessions":[{"agents":0,"cost_cents":142,"ctx":37,"hat":6,"id":"5f0c6c1e-2b7a-4c55-9a51-0d7f3b1c9e42","live":true,"model":"Opus 5.5","name":"T-Display-S3-Long","project":"T-Display-S3-Long","since":1795519030,"state":"permission","tint":1,"tmux":true,"tool":"bash"},{"agents":0,"cost_cents":-1,"ctx":-1,"hat":1,"id":"9b2d7e00-1111-4222-8333-444455556666","live":true,"model":"","name":"caltera","project":"caltera","since":1795519020,"state":"working","tint":2,"tmux":false,"tool":""}],"usage":{"five_hour":{"pct":42,"resets_at":1795530000},"seven_day":{"pct":13,"resets_at":1795900000}}}"#
+private let c2 = #"{"agents_total":0,"prompt":null,"sessions":[],"usage":{"five_hour":null,"seven_day":null}}"#
 private let t0: TimeInterval = 5000
 private let wall0 = Date(timeIntervalSince1970: 1795519000)
 
 private func at(_ s: TimeInterval) -> TimeInterval { t0 + s }
 
 private func feed(_ store: inout ClaudeStore, _ data: Data, pane: String? = nil, at now: TimeInterval) {
-    store.apply(ClaudeHookEvent.decode(data)!, pane: pane, now: now)
+    store.apply(ClaudeHookEvent.decode(data)!, pane: pane, now: now, wall: wall0.addingTimeInterval(now - t0))
 }
 
 private func check(_ store: inout ClaudeStore, _ request: String, _ visible: Bool, _ s: TimeInterval) -> Bool {
@@ -238,9 +238,15 @@ private func json(_ body: String) throws -> [String: Any] {
         for (i, id) in ids.enumerated() {
             feed(&store, hookJSON(id, plan[i].0, extra: plan[i].1), at: at(TimeInterval(i)))
         }
-        let sessions = try #require(try json(store.body(now: wall0))["sessions"] as? [[String: Any]])
+        var sessions = try #require(try json(store.body(now: wall0))["sessions"] as? [[String: Any]])
+        #expect(sessions.map { $0["id"] as! String } == ["s9", "s4", "s6", "s2", "s7", "s3", "s0", "s8", "s5", "s1"])
+        for i in 10..<30 {
+            feed(&store, hookJSON("s\(i)", "UserPromptSubmit"), at: at(TimeInterval(i)))
+        }
+        sessions = try #require(try json(store.body(now: wall0))["sessions"] as? [[String: Any]])
         let got = sessions.map { $0["id"] as! String }
-        #expect(got == ["s9", "s4", "s6", "s2", "s8", "s5", "s1", "s7"])
+        #expect(got == ["s9", "s4", "s6", "s2"] + (10..<30).reversed().map { "s\($0)" })
+        #expect(got.count == 24)
     }
 
     @Test func bodyWorstCaseFitsBoard() throws {

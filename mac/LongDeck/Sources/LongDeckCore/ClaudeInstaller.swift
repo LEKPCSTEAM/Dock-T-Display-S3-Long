@@ -34,9 +34,20 @@ public enum ClaudeInstallError: Error, Equatable {
 public enum ClaudeInstaller {
     public static let port = 47821
     public static let hookEvents = ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse",
-                                    "PostToolUseFailure", "PermissionRequest", "Notification", "Stop", "SessionEnd"]
+                                    "PostToolUseFailure", "PermissionRequest", "Notification", "Stop", "SessionEnd",
+                                    "SubagentStart", "SubagentStop"]
 
     private static let urlPrefix = "http://127.0.0.1:\(port)/"
+
+    public static func isCurrent(_ paths: ClaudeInstallPaths) -> Bool {
+        guard let data = try? Data(contentsOf: paths.settings.resolvingSymlinksInPath()),
+              let root = try? JSONText.parse(data) else { return false }
+        let command = StatusLineWrapper.shellQuote(paths.hookScript.path)
+        return hookEvents.allSatisfy { name in
+            guard case .array(let groups)? = root["hooks"]?[name] else { return false }
+            return groups.contains { isLongDeckGroup($0, hookCommand: command) }
+        }
+    }
 
     public static func loadState(_ paths: ClaudeInstallPaths) -> ClaudeInstallState? {
         guard let data = try? Data(contentsOf: paths.stateFile) else { return nil }
