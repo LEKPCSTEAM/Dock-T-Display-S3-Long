@@ -27,6 +27,7 @@ public struct ClaudeSession: Equatable, Sendable {
     public var lastTool: String?
     public var subagents: [String: TimeInterval] = [:]
     public var sinceWall: TimeInterval = 0
+    public var createdAt: TimeInterval = 0
 
     public var pending: ClaudePending? { queue.first }
     public var pendingCount: Int { queue.count }
@@ -48,6 +49,8 @@ public struct ClaudeStore: Sendable {
     public private(set) var sessions: [String: ClaudeSession] = [:]
     public private(set) var fiveHour: UsageWindow?
     public private(set) var sevenDay: UsageWindow?
+    public var history = ClaudeHistory()
+    public var historyChanged = false
 
     public init(runTag: String) {
         self.runTag = runTag
@@ -62,6 +65,7 @@ public struct ClaudeStore: Sendable {
     public mutating func apply(_ e: ClaudeHookEvent, pane: String?, now: TimeInterval, wall: Date = Date()) {
         anchor = (now, wall.timeIntervalSince1970)
         if e.event == "SessionEnd" {
+            if let s = sessions[e.sessionId] { archive(s, now: now) }
             sessions[e.sessionId] = nil
             ended[e.sessionId] = now
             return
@@ -72,8 +76,9 @@ public struct ClaudeStore: Sendable {
             return
         }
         var s = sessions[e.sessionId] ?? ClaudeSession(id: e.sessionId, state: .waiting, stateSince: now, lastSeen: now,
-                                                       sinceWall: anchor.wall)
+                                                       sinceWall: anchor.wall, createdAt: now)
         s.lastSeen = now
+        s.subagents = s.subagents.filter { now - $0.value <= Self.subagentLimit }
         if let cwd = e.cwd { s.cwd = cwd }
         if let pane {
             claimPane(pane, for: e.sessionId, now: now)
@@ -82,6 +87,7 @@ public struct ClaudeStore: Sendable {
         switch e.event {
         case "SessionStart":
             s.queue = []
+            s.subagents = [:]
             set(&s, .waiting, now)
         case "UserPromptSubmit":
             s.queue = []
@@ -127,10 +133,11 @@ public struct ClaudeStore: Sendable {
         sessions[e.sessionId] = s
     }
 
-    public mutating func apply(_ u: ClaudeStatusUpdate, pane: String?, now: TimeInterval) {
+    public mutating func apply(_ u: ClaudeStatusUpdate, pane: String?, now: TimeInterval, wall: Date = Date()) {
+        anchor = (now, wall.timeIntervalSince1970)
         if isEnded(u.sessionId, now) { return }
         var s = sessions[u.sessionId] ?? ClaudeSession(id: u.sessionId, state: .waiting, stateSince: now,
-                                                       lastSeen: now, sinceWall: wallTime(now))
+                                                       lastSeen: now, sinceWall: anchor.wall, createdAt: now)
         s.lastSeen = now
         if let pane {
             claimPane(pane, for: u.sessionId, now: now)
@@ -146,10 +153,20 @@ public struct ClaudeStore: Sendable {
     }
 
     public mutating func expire(now: TimeInterval, wall: Date) {
-        sessions = sessions.filter { now - $0.value.lastSeen <= Self.silentLimit }
-        ended = ended.filter { now - $0.value <= Self.tombstoneTTL }
         let t = wall.timeIntervalSince1970
         anchor = (now, t)
+        for s in sessions.values.sorted(by: { $0.id < $1.id }) where now - s.lastSeen > Self.silentLimit {
+            archive(s, now: now)
+        }
+        sessions = sessions.filter { now - $0.value.lastSeen <= Self.silentLimit }
+        for (id, var s) in sessions {
+            s.subagents = s.subagents.filter { now - $0.value <= Self.subagentLimit }
+            sessions[id] = s
+        }
+        ended = ended.filter { now - $0.value <= Self.tombstoneTTL }
+        let before = history.records.count
+        history.prune(now: t)
+        if history.records.count != before { historyChanged = true }
         if let w = fiveHour, t >= w.resetsAt { fiveHour = nil }
         if let w = sevenDay, t >= w.resetsAt { sevenDay = nil }
     }
@@ -223,9 +240,10 @@ public struct ClaudeStore: Sendable {
         let agentsTotal = sessions.values.reduce(0) {
             $0 + ($1.state == .working ? 1 : 0) + runningSubagents($1, wall: wall)
         }
-        let list: [[String: Any]] = shown.map { s in
+        let uniqueNames = uniqueNames()
+        var list: [[String: Any]] = shown.map { s in
             let project = ClaudeText.project(s.projectDir ?? s.cwd)
-            let name = s.name.map { ClaudeText.prefix($0, bytes: 23) }.flatMap { $0.isEmpty ? nil : $0 } ?? project
+            let name = uniqueNames[s.id] ?? Self.displayName(s)
             let tool: String
             switch s.state {
             case .permission: tool = s.pending.map { ClaudeText.toolLabel($0.toolName) } ?? ""
@@ -249,6 +267,30 @@ public struct ClaudeStore: Sendable {
                 "cost_cents": s.costUSD.map { Self.clampedInt($0 * 100, 0, 100_000_000) } ?? -1,
                 "tmux": s.pane != nil,
             ]
+        }
+        let liveNames = Set(sessions.values.map(Self.displayName))
+        let past = history.records
+            .filter { !liveNames.contains($0.name) }
+            .sorted { ($0.endedAt, $1.name) > ($1.endedAt, $0.name) }
+            .prefix(max(0, Self.maxSessions - list.count))
+        for r in past {
+            let hat = AgentHat.of(r.name)
+            list.append([
+                "id": "h:" + r.name,
+                "project": r.project,
+                "name": r.name,
+                "tool": "",
+                "agents": 0,
+                "since": Self.clampedInt(r.endedAt, 0, 4_000_000_000_000),
+                "hat": hat.hat,
+                "tint": hat.tint,
+                "live": false,
+                "model": "",
+                "state": ClaudeState.done.rawValue,
+                "ctx": -1,
+                "cost_cents": -1,
+                "tmux": false,
+            ])
         }
         var prompt: Any = NSNull()
         let pendings = pendingPrompts()
@@ -275,6 +317,32 @@ public struct ClaudeStore: Sendable {
                                                      options: [.sortedKeys, .withoutEscapingSlashes])
         else { return "{\"agents_total\":0,\"prompt\":null,\"sessions\":[],\"usage\":{\"five_hour\":null,\"seven_day\":null}}" }
         return String(decoding: data, as: UTF8.self)
+    }
+
+    private static func displayName(_ s: ClaudeSession) -> String {
+        s.name.map { ClaudeText.prefix($0, bytes: 23) }.flatMap { $0.isEmpty ? nil : $0 }
+            ?? ClaudeText.project(s.projectDir ?? s.cwd)
+    }
+
+    private func uniqueNames() -> [String: String] {
+        var out: [String: String] = [:]
+        let groups = Dictionary(grouping: sessions.values.filter { $0.id.utf8.count <= Self.maxIdBytes },
+                                by: Self.displayName)
+        for (name, group) in groups {
+            let ordered = group.sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
+            for (i, s) in ordered.enumerated() {
+                let suffix = i == 0 ? "" : "·\(i + 1)"
+                out[s.id] = ClaudeText.prefix(name, bytes: 23 - suffix.utf8.count) + suffix
+            }
+        }
+        return out
+    }
+
+    private mutating func archive(_ s: ClaudeSession, now: TimeInterval) {
+        let project = ClaudeText.project(s.projectDir ?? s.cwd)
+        history.record(name: Self.displayName(s), project: project, endedAt: wallTime(s.lastSeen))
+        history.prune(now: wallTime(now))
+        historyChanged = true
     }
 
     private func windowJSON(_ w: UsageWindow?, _ now: Date) -> Any {

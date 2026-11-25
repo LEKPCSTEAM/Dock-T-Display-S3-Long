@@ -69,7 +69,7 @@ private func total(_ store: ClaudeStore, wall s: TimeInterval = 0) throws -> Int
         #expect(try rows(store, wall: 2 + 7201).first?["agents"] as? Int == 0)
 
         event("s1", "SessionEnd", at: 7, into: &store)
-        #expect(try rows(store, wall: 8).isEmpty)
+        #expect(try rows(store, wall: 8).allSatisfy { $0["live"] as? Bool == false })
         #expect(try total(store, wall: 8) == 0)
     }
 
