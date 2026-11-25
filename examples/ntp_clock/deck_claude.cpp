@@ -1,4 +1,5 @@
 #include "deck_claude.h"
+#include "deck_layout.h"
 #include <ArduinoJson.h>
 #include <math.h>
 #include <stdio.h>
@@ -191,4 +192,65 @@ void deck_claude_format_cost(int32_t cents, char *out, size_t len) {
 bool deck_claude_prompt_same(const DeckClaudePrompt *a, const DeckClaudePrompt *b) {
   if (!a->present || !b->present) return a->present == b->present;
   return strcmp(a->session, b->session) == 0 && strcmp(a->request, b->request) == 0;
+}
+
+int deck_claude_agents_grid(uint8_t w, uint8_t h, int box_w, int box_h, int *cols, int *rows, int *tw, int *th) {
+  const int c = w / 2 > 0 ? w / 2 : 1;
+  const int r = h > 0 ? h : 1;
+  *cols = c;
+  *rows = r;
+  *tw = (box_w - DECK_AGENTS_RAIL_W) / c;
+  *th = box_h / r;
+  return c * r;
+}
+
+void deck_claude_agent_status(const DeckClaudeSession *s, uint32_t now, const char *sep, char *out, size_t n) {
+  if (!out || !n) return;
+  out[0] = 0;
+  if (!s) return;
+  if (!sep) sep = " ";
+  char tool[DECK_CLAUDE_TOOL_MAX], age[16];
+  switch (s->state) {
+  case DCS_WORKING:
+    if (!s->tool[0]) snprintf(out, n, "working");
+    else if (s->ctx < 0) snprintf(out, n, "%s", s->tool);
+    else snprintf(out, n, "%s%s%d%% ctx", s->tool, sep, s->ctx);
+    break;
+  case DCS_PERMISSION:
+    deck_claude_copy(tool, sizeof tool, s->tool);
+    if (tool[0] >= 'a' && tool[0] <= 'z') tool[0] = (char)(tool[0] - 'a' + 'A');
+    if (tool[0]) snprintf(out, n, "permission%s%s", sep, tool);
+    else snprintf(out, n, "permission");
+    break;
+  case DCS_WAITING:
+    snprintf(out, n, "hungry%sfeed me", sep);
+    break;
+  default:
+    if (deck_claude_age(age, sizeof age, s->since, now)) snprintf(out, n, "done%s%s", sep, age);
+    else snprintf(out, n, "done");
+    break;
+  }
+}
+
+int deck_claude_agent_tag(const DeckAgentSprites *sp, uint8_t state) {
+  if (!sp || !sp->present) return -1;
+  if (state < DECK_AGENT_TAGS && sp->tag_count[state]) return state;
+  return sp->tag_count[0] ? 0 : -1;
+}
+
+bool deck_claude_agent_step(const DeckAgentSprites *sp, int tag, uint8_t *frame, uint32_t *entered, uint32_t now) {
+  if (!sp || !frame || !entered || tag < 0 || tag >= DECK_AGENT_TAGS || !sp->tag_count[tag]) return false;
+  const uint8_t first = sp->tag_first[tag], count = sp->tag_count[tag];
+  if (*frame < first || *frame >= first + count) {
+    *frame = first;
+    *entered = now;
+    return true;
+  }
+  if (count == 1) return false;
+  const uint32_t dur = sp->ms[*frame] ? sp->ms[*frame] : DECK_AGENT_DEFAULT_MS;
+  const uint32_t elapsed = now - *entered;
+  if (elapsed < dur) return false;
+  *entered = elapsed >= 2 * dur ? now : *entered + dur;
+  *frame = (uint8_t)(first + (*frame - first + 1) % count);
+  return true;
 }

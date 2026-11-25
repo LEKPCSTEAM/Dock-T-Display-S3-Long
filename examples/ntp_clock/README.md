@@ -51,11 +51,12 @@ Flash ครั้งแรกหลังเพิ่ม LongDeck ต้อง�
 
 หลัง Uninstall ให้ restart session ของ Claude Code ที่เปิดค้างไว้ ไม่งั้น session เดิมจะยังเรียก `hook.sh` ที่ถูกลบไปแล้วและขึ้น hook error (หลัง Install ก็ต้อง restart เพื่อให้ session โหลด hook)
 
-หน้า `Claude` มี 2 widget
+หน้า `Claude` มี 3 widget
 
 - `claude_sessions` — แถวละ session: จุดสี accent = working, เหลือง = รอ permission, เขียว = waiting (เสร็จแล้วรอ prompt), เทา = อื่น ๆ ถ้าเกินจำนวนแถวจะขึ้น `+N more`
 - `claude_usage` — 5h / 7d เป็น % พร้อม countdown reset: bar สี accent ปกติ, เหลืองเมื่อ ≥ 80%, แดงเมื่อ ≥ 95%
-- Mac offline, ยังไม่ Install หรือ listener ของแอปยังไม่ทำงาน: ทั้งสอง widget แสดง `--` (หลัง Uninstall หรือ listener ล่ม จะขึ้น `No sessions` จนกว่าบอร์ดจะ reconnect)
+- `claude_agents` (ขั้นต่ำ 2x1) — tile ละ session (live + ที่จบใน 7 วัน สูงสุด 24) ตัวละคร pixel ขยับตาม state ใส่หมวกสีประจำชื่อ: working / permission มีมุมสีส้ม, waiting ขึ้น `hungry · feed me` บนพื้นลายทาง, done ขึ้น `done · 5m ago` ป้าย `x3` = subagent ที่รันอยู่ pill ขวาบน = session ที่ working + subagent ทั้งหมด ลากขึ้นลงเพื่อเลื่อน tile (ปัดซ้ายขวายังเปลี่ยนหน้า) แตะ = focus, กดค้าง tile ที่ working = interrupt, tile ที่จบแล้วไม่รับ input
+- Mac offline, ยังไม่ Install หรือ listener ของแอปยังไม่ทำงาน: ทุก widget แสดง `--` (หลัง Uninstall หรือ listener ล่ม จะขึ้น `No sessions` จนกว่าบอร์ดจะ reconnect)
 
 แตะแถว session = focus หน้าต่าง iTerm2/tmux ของ session นั้น, กดค้างแถวที่กำลัง working = interrupt (Escape ส่งเฉพาะตอนจอ Claude Code ขึ้น `esc to interrupt`)
 

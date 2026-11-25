@@ -11,6 +11,8 @@
 #define DECK_CLAUDE_MODEL_MAX    16
 #define DECK_CLAUDE_SUMMARY_MAX  84
 #define DECK_CLAUDE_REASON_MAX   16
+#define DECK_AGENTS_RAIL_W       12  // px column for the total pill and scroll thumb
+#define DECK_AGENT_DEFAULT_MS    100 // stands in for a zero frame duration
 
 enum DeckClaudeState : uint8_t { DCS_WORKING = 0, DCS_PERMISSION, DCS_WAITING, DCS_DONE, DCS_COUNT };
 enum DeckClaudeAction : uint8_t { DCA_APPROVE = 0, DCA_ALWAYS, DCA_DENY, DCA_INTERRUPT, DCA_FOCUS, DCA_COUNT };
@@ -59,3 +61,9 @@ void        deck_claude_format_reset(uint32_t resets_at, uint32_t now, char *out
 size_t      deck_claude_age(char *out, size_t n, uint32_t since, uint32_t now);  // "" and 0 when unknown
 void        deck_claude_format_cost(int32_t cents, char *out, size_t len);
 bool        deck_claude_prompt_same(const DeckClaudePrompt *a, const DeckClaudePrompt *b);
+
+struct DeckAgentSprites;
+int  deck_claude_agents_grid(uint8_t w, uint8_t h, int box_w, int box_h, int *cols, int *rows, int *tw, int *th);
+void deck_claude_agent_status(const DeckClaudeSession *s, uint32_t now, const char *sep, char *out, size_t n);
+int  deck_claude_agent_tag(const DeckAgentSprites *sp, uint8_t state);  // -1 when no frames
+bool deck_claude_agent_step(const DeckAgentSprites *sp, int tag, uint8_t *frame, uint32_t *entered, uint32_t now);

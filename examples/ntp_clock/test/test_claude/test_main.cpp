@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string>
 #include "deck_claude.h"
+#include "deck_layout.h"
 
 void setUp() {}
 void tearDown() {}
@@ -331,6 +332,139 @@ void test_prompt_same() {
   TEST_ASSERT_FALSE(deck_claude_prompt_same(&a, &b));
 }
 
+void test_agents_grid() {
+  const struct { uint8_t w, h; int bw, bh, tiles, cols, rows, tw, th; } v[] = {
+      {2, 1, 154, 84, 1, 1, 1, 142, 84},  {4, 1, 314, 84, 2, 2, 1, 151, 84},
+      {2, 2, 154, 174, 2, 1, 2, 142, 87}, {8, 2, 634, 174, 8, 4, 2, 155, 87},
+      {3, 1, 234, 84, 1, 1, 1, 222, 84},  {1, 1, 74, 84, 1, 1, 1, 62, 84}};
+  for (const auto &t : v) {
+    int cols = -1, rows = -1, tw = -1, th = -1;
+    TEST_ASSERT_EQUAL_INT(t.tiles, deck_claude_agents_grid(t.w, t.h, t.bw, t.bh, &cols, &rows, &tw, &th));
+    TEST_ASSERT_EQUAL_INT(t.cols, cols);
+    TEST_ASSERT_EQUAL_INT(t.rows, rows);
+    TEST_ASSERT_EQUAL_INT(t.tw, tw);
+    TEST_ASSERT_EQUAL_INT(t.th, th);
+  }
+}
+
+static DeckClaudeSession agent(uint8_t state, const char *tool, int8_t ctx) {
+  DeckClaudeSession s;
+  memset(&s, 0, sizeof s);
+  s.state = state;
+  s.ctx = ctx;
+  s.live = true;
+  strcpy(s.tool, tool);
+  return s;
+}
+
+static std::string status(const DeckClaudeSession &s, uint32_t now = 0, const char *sep = " \xC2\xB7 ") {
+  char b[48];
+  memset(b, 'x', sizeof b);
+  deck_claude_agent_status(&s, now, sep, b, sizeof b);
+  return b;
+}
+
+void test_agent_status_lines() {
+  TEST_ASSERT_EQUAL_STRING("bash \xC2\xB7 98% ctx", status(agent(DCS_WORKING, "bash", 98)).c_str());
+  TEST_ASSERT_EQUAL_STRING("bash\n98% ctx", status(agent(DCS_WORKING, "bash", 98), 0, "\n").c_str());
+  TEST_ASSERT_EQUAL_STRING("bash", status(agent(DCS_WORKING, "bash", -1)).c_str());
+  TEST_ASSERT_EQUAL_STRING("working", status(agent(DCS_WORKING, "", 37)).c_str());
+  TEST_ASSERT_EQUAL_STRING("permission \xC2\xB7 Bash", status(agent(DCS_PERMISSION, "bash", 5)).c_str());
+  TEST_ASSERT_EQUAL_STRING("permission \xC2\xB7 Edit", status(agent(DCS_PERMISSION, "Edit", -1)).c_str());
+  TEST_ASSERT_EQUAL_STRING("permission \xC2\xB7 9p", status(agent(DCS_PERMISSION, "9p", -1)).c_str());
+  TEST_ASSERT_EQUAL_STRING("permission", status(agent(DCS_PERMISSION, "", -1)).c_str());
+  TEST_ASSERT_EQUAL_STRING("hungry \xC2\xB7 feed me", status(agent(DCS_WAITING, "bash", 40)).c_str());
+  TEST_ASSERT_EQUAL_STRING("hungry\nfeed me", status(agent(DCS_WAITING, "", -1), 0, "\n").c_str());
+}
+
+void test_agent_status_done_age() {
+  DeckClaudeSession s = agent(DCS_DONE, "", -1);
+  s.since = 1000;
+  TEST_ASSERT_EQUAL_STRING("done \xC2\xB7 5m ago", status(s, 1300).c_str());
+  TEST_ASSERT_EQUAL_STRING("done \xC2\xB7 now", status(s, 1010).c_str());
+  TEST_ASSERT_EQUAL_STRING("done", status(s, 0).c_str());
+  s.since = 0;
+  TEST_ASSERT_EQUAL_STRING("done", status(s, 1300).c_str());
+}
+
+void test_agent_status_small_buffer() {
+  char b[6];
+  memset(b, 'x', sizeof b);
+  deck_claude_agent_status(nullptr, 0, " ", b, sizeof b);
+  TEST_ASSERT_EQUAL_STRING("", b);
+  DeckClaudeSession s = agent(DCS_WAITING, "", -1);
+  deck_claude_agent_status(&s, 0, " \xC2\xB7 ", b, sizeof b);
+  TEST_ASSERT_EQUAL_STRING("hungr", b);
+}
+
+static DeckAgentSprites sprites4() {
+  DeckAgentSprites sp;
+  memset(&sp, 0, sizeof sp);
+  sp.present = true;
+  sp.frames = 8;
+  const uint8_t first[DECK_AGENT_TAGS] = {0, 3, 5, 6}, count[DECK_AGENT_TAGS] = {3, 2, 1, 2};
+  for (int i = 0; i < DECK_AGENT_TAGS; i++) {
+    sp.tag_first[i] = first[i];
+    sp.tag_count[i] = count[i];
+  }
+  for (int i = 0; i < 8; i++) sp.ms[i] = 100;
+  return sp;
+}
+
+void test_agent_tag_fallback() {
+  DeckAgentSprites sp = sprites4();
+  for (int s = 0; s < DCS_COUNT; s++) TEST_ASSERT_EQUAL_INT(s, deck_claude_agent_tag(&sp, (uint8_t)s));
+  TEST_ASSERT_EQUAL_INT(0, deck_claude_agent_tag(&sp, 9));
+  sp.tag_count[2] = 0;
+  TEST_ASSERT_EQUAL_INT(0, deck_claude_agent_tag(&sp, DCS_WAITING));
+  sp.tag_count[0] = 0;
+  TEST_ASSERT_EQUAL_INT(-1, deck_claude_agent_tag(&sp, DCS_WAITING));
+  TEST_ASSERT_EQUAL_INT(3, deck_claude_agent_tag(&sp, DCS_DONE));
+  sp.present = false;
+  TEST_ASSERT_EQUAL_INT(-1, deck_claude_agent_tag(&sp, DCS_DONE));
+  TEST_ASSERT_EQUAL_INT(-1, deck_claude_agent_tag(nullptr, DCS_DONE));
+}
+
+void test_agent_step_timing() {
+  DeckAgentSprites sp = sprites4();
+  uint8_t f = 0;
+  uint32_t at = 1000;
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 0, &f, &at, 1099));
+  TEST_ASSERT_EQUAL_UINT8(0, f);
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1100));
+  TEST_ASSERT_EQUAL_UINT8(1, f);
+  TEST_ASSERT_EQUAL_UINT32(1100, at);
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1250));
+  TEST_ASSERT_EQUAL_UINT8(2, f);
+  TEST_ASSERT_EQUAL_UINT32(1200, at);
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 1300));
+  TEST_ASSERT_EQUAL_UINT8(0, f);
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 0, &f, &at, 5000));
+  TEST_ASSERT_EQUAL_UINT8(1, f);
+  TEST_ASSERT_EQUAL_UINT32(5000, at);
+}
+
+void test_agent_step_edges() {
+  DeckAgentSprites sp = sprites4();
+  uint8_t f = 0;
+  uint32_t at = 0;
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 1, &f, &at, 777));
+  TEST_ASSERT_EQUAL_UINT8(3, f);
+  TEST_ASSERT_EQUAL_UINT32(777, at);
+  f = 5;
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 2, &f, &at, 99999));
+  TEST_ASSERT_EQUAL_UINT8(5, f);
+  sp.ms[3] = 0;
+  f = 3;
+  at = 0;
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 1, &f, &at, 99));
+  TEST_ASSERT_TRUE(deck_claude_agent_step(&sp, 1, &f, &at, 100));
+  TEST_ASSERT_EQUAL_UINT8(4, f);
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, -1, &f, &at, 5000));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(&sp, 7, &f, &at, 5000));
+  TEST_ASSERT_FALSE(deck_claude_agent_step(nullptr, 0, &f, &at, 5000));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_parse_c1);
@@ -355,5 +489,12 @@ int main() {
   RUN_TEST(test_format_reset_vectors);
   RUN_TEST(test_format_cost_vectors);
   RUN_TEST(test_prompt_same);
+  RUN_TEST(test_agents_grid);
+  RUN_TEST(test_agent_status_lines);
+  RUN_TEST(test_agent_status_done_age);
+  RUN_TEST(test_agent_status_small_buffer);
+  RUN_TEST(test_agent_tag_fallback);
+  RUN_TEST(test_agent_step_timing);
+  RUN_TEST(test_agent_step_edges);
   return UNITY_END();
 }

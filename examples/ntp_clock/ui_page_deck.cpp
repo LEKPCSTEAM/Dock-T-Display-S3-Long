@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ui_internal.h"
+#include "ui_deck_agents.h"
 #include "deck_net.h"
 #include "deck_store.h"
 
@@ -133,7 +134,7 @@ static void hint_create(lv_obj_t *tile)
 
 static void key_create(lv_obj_t *tile, const DeckWidget *w)
 {
-    if (ui_live_create(tile, w) || ui_claude_create(tile, w)) {
+    if (ui_live_create(tile, w) || ui_claude_create(tile, w) || ui_agents_create(tile, w, &layout.sprites)) {
         return;
     }
     lv_coord_t x  = w->col * CELL_W + CELL_PAD;
@@ -177,6 +178,7 @@ static void deck_rebuild()
     ui_set_deck_pages(n);
     ui_live_reset();
     ui_claude_reset();
+    ui_agents_reset();
     for (uint8_t i = 0; i < built_pages && i < DECK_MAX_PAGES; i++) {
         lv_obj_t *tile = ui_deck_tile(i);
         if (tile) {
@@ -255,6 +257,7 @@ void page_deck_update(const UiTick *t)
                 if (used) {
                     face_reload(id);
                 }
+                ui_agents_face_changed(id);
             }
         }
     }
@@ -276,10 +279,11 @@ void page_deck_update(const UiTick *t)
         }
     }
 
+    int8_t idx = (int8_t)visible_deck_index(have_layout);
     ui_live_update(t, ready);
     ui_claude_update(t, ready);
+    ui_agents_update(t, ready, idx >= 0);
 
-    int8_t idx = (int8_t)visible_deck_index(have_layout);
     if (idx != sent_page) {
         sent_page = idx;
         deck_net_page(idx);
