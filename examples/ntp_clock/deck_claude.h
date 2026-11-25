@@ -2,8 +2,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define DECK_CLAUDE_MAX_SESSIONS 8
-#define DECK_CLAUDE_BODY_MAX     4096
+#define DECK_CLAUDE_MAX_SESSIONS 24
+#define DECK_CLAUDE_BODY_MAX     8192
 #define DECK_CLAUDE_ID_MAX       40
 #define DECK_CLAUDE_REQ_MAX      16
 #define DECK_CLAUDE_PROJECT_MAX  24
@@ -23,6 +23,12 @@ struct DeckClaudeSession {
   int8_t ctx;          // -1 unknown
   int32_t cost_cents;  // -1 unknown
   bool tmux;
+  char name[DECK_CLAUDE_PROJECT_MAX];
+  char tool[DECK_CLAUDE_TOOL_MAX];
+  uint8_t agents;
+  uint32_t since;      // 0 unknown
+  uint8_t hat, tint;
+  bool live;
 };
 struct DeckClaudeWindow { bool known; uint8_t pct; uint32_t resets_at; };
 struct DeckClaudePrompt {
@@ -36,6 +42,7 @@ struct DeckClaudePrompt {
 };
 struct DeckClaude {
   uint8_t count;
+  uint8_t agents_total;
   DeckClaudeSession s[DECK_CLAUDE_MAX_SESSIONS];
   DeckClaudeWindow five_hour, seven_day;
   DeckClaudePrompt prompt;
@@ -49,5 +56,6 @@ int         deck_claude_state_from_name(const char *name);  // -1 if unknown
 const char *deck_claude_action_name(uint8_t action);        // "" if out of range
 void        deck_claude_copy(char *dst, size_t dst_len, const char *src);
 void        deck_claude_format_reset(uint32_t resets_at, uint32_t now, char *out, size_t len);
+size_t      deck_claude_age(char *out, size_t n, uint32_t since, uint32_t now);  // "" and 0 when unknown
 void        deck_claude_format_cost(int32_t cents, char *out, size_t len);
 bool        deck_claude_prompt_same(const DeckClaudePrompt *a, const DeckClaudePrompt *b);

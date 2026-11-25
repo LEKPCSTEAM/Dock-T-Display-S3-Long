@@ -92,6 +92,13 @@ void deck_store_invalidate_faces(const DeckLayout *layout)
             LittleFS.remove(path);
         }
     }
+    const DeckAgentSprites &sp = layout->sprites;
+    if (!sp.present) return;
+    for (int i = 0; i < sp.frames + sp.hat_count; i++) {
+        char path[32];
+        face_path(path, sizeof(path), i < sp.frames ? sp.first_id + i : sp.hat_first + (i - sp.frames));
+        LittleFS.remove(path);
+    }
 }
 
 bool deck_store_face_exists(uint16_t id)
@@ -160,9 +167,15 @@ void deck_store_prune(const DeckLayout *keep)
             if (face >= 1 && face <= DECK_MAX_FACES) used[face] = true;
         }
     }
+    const DeckAgentSprites &sp = keep->sprites;
+    if (sp.present) {
+        for (int i = 0; i < sp.frames; i++) used[sp.first_id + i] = true;
+        for (int i = 0; i < sp.hat_count; i++) used[sp.hat_first + i] = true;
+    }
     File dir = LittleFS.open(DECK_DIR);
     if (!dir) return;
-    String doomed[DECK_MAX_FACES + 1];
+    String *doomed = new (std::nothrow) String[DECK_MAX_FACES + 1];
+    if (!doomed) return;
     int    n = 0;
     for (File e = dir.openNextFile(); e && n <= DECK_MAX_FACES; e = dir.openNextFile()) {
         String name = e.name();
@@ -177,4 +190,5 @@ void deck_store_prune(const DeckLayout *keep)
     }
     dir.close();
     for (int i = 0; i < n; i++) LittleFS.remove(String(DECK_DIR "/") + doomed[i]);
+    delete[] doomed;
 }

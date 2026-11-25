@@ -56,6 +56,7 @@ static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char 
   else if (strcmp(type, "clock") == 0) w->type = DW_CLOCK;
   else if (strcmp(type, "claude_usage") == 0) w->type = DW_CLAUDE_USAGE;
   else if (strcmp(type, "claude_sessions") == 0) w->type = DW_CLAUDE_SESSIONS;
+  else if (strcmp(type, "claude_agents") == 0) w->type = DW_CLAUDE_AGENTS;
   else if (strcmp(type, "stat") == 0) {
     const int metric = deck_metric_from_name(jw["metric"] | (const char *)nullptr);
     const int style = deck_style_from_name(jw["style"] | (const char *)nullptr);
@@ -72,10 +73,11 @@ static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char 
     return fail(err, err_len, "widget geometry invalid");
   if (w->col + w->w > DECK_COLS || w->row + w->h > DECK_ROWS) return fail(err, err_len, "widget outside grid");
   if (w->type == DW_CLAUDE_SESSIONS && w->w < 2) w->type = DW_UNKNOWN;
+  if (w->type == DW_CLAUDE_AGENTS && w->w < 2) w->type = DW_UNKNOWN;
 
   if (w->type == DW_KEY) {
     const int face = jw["face"] | 0;
-    if (face < 1 || face > DECK_MAX_FACES) return fail(err, err_len, "face out of range");
+    if (face < 1 || face > DECK_KEY_MAX_FACE) return fail(err, err_len, "face out of range");
     w->face = (uint16_t)face;
   }
   if (w->type == DW_KEY) w->has_long = jw["long"] | false;
@@ -86,6 +88,67 @@ static bool parse_widget(JsonObjectConst jw, DeckWidget *w, uint16_t *occ, char 
       occ[r] |= (1u << c);
     }
   return true;
+}
+
+static bool parse_u8_list(JsonVariantConst v, uint8_t n, uint8_t *out) {
+  JsonArrayConst a = v.as<JsonArrayConst>();
+  if (a.isNull() || a.size() != n) return false;
+  uint8_t i = 0;
+  for (JsonVariantConst e : a)
+    if (!get_u8(e, 0, 255, &out[i++])) return false;
+  return true;
+}
+
+static void parse_sprites(JsonVariantConst js, DeckAgentSprites *sp) {
+  memset(sp, 0, sizeof *sp);
+  if (!js.is<JsonObjectConst>()) return;
+  DeckAgentSprites t;
+  memset(&t, 0, sizeof t);
+  JsonArrayConst tags = js["tags"].as<JsonArrayConst>();
+  if (tags.isNull() || tags.size() < 1 || tags.size() > DECK_AGENT_TAGS) return;
+  int frames = 0, ti = 0;
+  for (JsonVariantConst jt : tags) {
+    JsonArrayConst pair = jt.as<JsonArrayConst>();
+    if (pair.isNull() || pair.size() != 2) return;
+    if (!get_u8(pair[0], 0, DECK_SPRITE_MAX_FRAMES - 1, &t.tag_first[ti]) ||
+        !get_u8(pair[1], 1, DECK_SPRITE_MAX_FRAMES, &t.tag_count[ti]))
+      return;
+    frames += t.tag_count[ti++];
+  }
+  if (frames > DECK_SPRITE_MAX_FRAMES) return;
+  for (int i = 0; i < ti; i++)
+    if (t.tag_first[i] + t.tag_count[i] > frames) return;
+  t.frames = (uint8_t)frames;
+
+  const int first = js["first"] | 0;
+  if (first < DECK_SPRITE_FIRST_ID || first + frames - 1 > DECK_MAX_FACES) return;
+  t.first_id = (uint16_t)first;
+  if (!get_u8(js["w"], 1, 255, &t.w) || !get_u8(js["h"], 1, 255, &t.h)) return;
+
+  JsonArrayConst ms = js["ms"].as<JsonArrayConst>();
+  if (ms.isNull() || ms.size() != (size_t)frames) return;
+  int i = 0;
+  for (JsonVariantConst e : ms) {
+    if (!e.is<int>() || e.as<int>() < 0 || e.as<int>() > 65535) return;
+    t.ms[i++] = (uint16_t)e.as<int>();
+  }
+  if (!parse_u8_list(js["hx"], t.frames, t.hat_x) || !parse_u8_list(js["hy"], t.frames, t.hat_y)) return;
+
+  JsonArrayConst hats = js["hats"].as<JsonArrayConst>();
+  if (!hats.isNull()) {
+    if (hats.size() != 2 || !hats[0].is<int>() || !hats[1].is<int>()) return;
+    const int hf = hats[0].as<int>(), hn = hats[1].as<int>();
+    if (hn < 0 || hn > 255) return;
+    if (hn > 0) {
+      if (hf < DECK_SPRITE_FIRST_ID || hf + hn - 1 > DECK_MAX_FACES) return;
+      if (hf < first + frames && hf + hn > first) return;
+      if (!get_u8(js["hw"], 1, 255, &t.hat_w) || !get_u8(js["hh"], 1, 255, &t.hat_h)) return;
+      t.hat_first = (uint16_t)hf;
+      t.hat_count = (uint8_t)hn;
+    }
+  }
+  t.present = true;
+  *sp = t;
 }
 
 bool deck_layout_parse(const char *json, size_t len, DeckLayout *out, char *err, size_t err_len) {
@@ -131,6 +194,8 @@ bool deck_layout_parse(const char *json, size_t len, DeckLayout *out, char *err,
     }
     tmp.page_count++;
   }
+
+  parse_sprites(doc["agent_sprites"], &tmp.sprites);
 
   *out = tmp;
   return true;

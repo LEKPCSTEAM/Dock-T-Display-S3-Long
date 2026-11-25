@@ -131,6 +131,11 @@ static bool face_referenced(uint16_t id)
                 if (pg.widgets[i].type == DW_KEY && pg.widgets[i].face == id) found = true;
             }
         }
+        const DeckAgentSprites &sp = s_snap_layout.sprites;
+        if (sp.present) {
+            if (id >= sp.first_id && id < sp.first_id + sp.frames) found = true;
+            if (sp.hat_count && id >= sp.hat_first && id < sp.hat_first + sp.hat_count) found = true;
+        }
     }
     unlock();
     return found;

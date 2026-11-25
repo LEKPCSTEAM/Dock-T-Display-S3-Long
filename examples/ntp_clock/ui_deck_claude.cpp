@@ -263,9 +263,12 @@ static void row_show(SessRow *r, bool show)
 
 static void sessions_refresh(ClaudeWidget *cw, const UiTick *t, bool live)
 {
-    int count = live ? snap.count : 0;
-    if (count > DECK_CLAUDE_MAX_SESSIONS) {
-        count = DECK_CLAUDE_MAX_SESSIONS;
+    const DeckClaudeSession *rows[DECK_CLAUDE_MAX_SESSIONS];
+    int count = 0;
+    for (int i = 0; live && i < snap.count && i < DECK_CLAUDE_MAX_SESSIONS; i++) {
+        if (snap.s[i].live) {
+            rows[count++] = &snap.s[i];
+        }
     }
     if (!live || count == 0) {
         for (int i = 0; i < cw->rows; i++) {
@@ -296,7 +299,7 @@ static void sessions_refresh(ClaudeWidget *cw, const UiTick *t, bool live)
             set_text(r->proj, more_txt);
             continue;
         }
-        const DeckClaudeSession *s = &snap.s[i];
+        const DeckClaudeSession *s = rows[i];
         char right[56];
         r->idx = i;
         if (s->tmux) {

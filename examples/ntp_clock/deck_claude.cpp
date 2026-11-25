@@ -47,6 +47,16 @@ static int32_t parse_cost(JsonVariantConst v) {
   return (int32_t)clamp_d(round_half_up(x), 0, 2000000000);
 }
 
+static uint8_t parse_u8(JsonVariantConst v, double hi) {
+  if (!v.is<double>()) return 0;
+  return (uint8_t)clamp_d(round_half_up(v.as<double>()), 0, hi);
+}
+
+static uint32_t parse_u32(JsonVariantConst v) {
+  if (!v.is<double>()) return 0;
+  return (uint32_t)clamp_d(v.as<double>(), 0, 4294967295.0);
+}
+
 static void parse_window(JsonVariantConst v, DeckClaudeWindow *w) {
   memset(w, 0, sizeof *w);
   if (!v.is<JsonObjectConst>()) return;
@@ -100,7 +110,16 @@ bool deck_claude_parse(const char *json, size_t len, DeckClaude *out) {
     s.ctx = parse_ctx(js["ctx"]);
     s.cost_cents = parse_cost(js["cost_cents"]);
     s.tmux = js["tmux"] | false;
+    const char *name = str_of(js["name"]);
+    deck_claude_copy(s.name, sizeof s.name, *name ? name : str_of(js["project"]));
+    deck_claude_copy(s.tool, sizeof s.tool, str_of(js["tool"]));
+    s.agents = parse_u8(js["agents"], 255);
+    s.since = parse_u32(js["since"]);
+    s.hat = parse_u8(js["hat"], 255);
+    s.tint = parse_u8(js["tint"], 255);
+    s.live = js["live"] | true;
   }
+  c.agents_total = parse_u8(doc["agents_total"], 255);
   parse_window(doc["usage"]["five_hour"], &c.five_hour);
   parse_window(doc["usage"]["seven_day"], &c.seven_day);
   parse_prompt(doc["prompt"], &c.prompt);
@@ -148,6 +167,19 @@ void deck_claude_format_reset(uint32_t resets_at, uint32_t now, char *out, size_
   else if (d < 3600) snprintf(out, len, "%um", (unsigned)(d / 60));
   else if (d < 86400) snprintf(out, len, "%uh %um", (unsigned)(d / 3600), (unsigned)((d % 3600) / 60));
   else snprintf(out, len, "%ud %uh", (unsigned)(d / 86400), (unsigned)((d % 86400) / 3600));
+}
+
+size_t deck_claude_age(char *out, size_t n, uint32_t since, uint32_t now) {
+  if (!out || !n) return 0;
+  out[0] = 0;
+  if (!now || !since || (uint64_t)since > (uint64_t)now + 60) return 0;
+  const uint32_t d = since > now ? 0 : now - since;
+  int w;
+  if (d < 60) w = snprintf(out, n, "now");
+  else if (d < 3600) w = snprintf(out, n, "%um ago", (unsigned)(d / 60));
+  else if (d < 86400) w = snprintf(out, n, "%uh ago", (unsigned)(d / 3600));
+  else w = snprintf(out, n, "%ud ago", (unsigned)(d / 86400));
+  return w < 0 ? 0 : ((size_t)w < n ? (size_t)w : n - 1);
 }
 
 void deck_claude_format_cost(int32_t cents, char *out, size_t len) {

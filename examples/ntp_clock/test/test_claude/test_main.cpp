@@ -96,17 +96,90 @@ void test_parse_skips_bad_sessions() {
   TEST_ASSERT_EQUAL_UINT8(DCS_DONE, c.s[1].state);
 }
 
-void test_parse_caps_sessions_at_8() {
+void test_cap_24() {
   DeckClaude c;
   std::string s;
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 30; i++) {
     if (i) s += ",";
     s += sess("id" + std::to_string(i));
   }
   TEST_ASSERT_TRUE(parse(body(s), &c));
-  TEST_ASSERT_EQUAL_UINT8(8, c.count);
+  TEST_ASSERT_EQUAL_UINT8(24, c.count);
   TEST_ASSERT_EQUAL_STRING("id0", c.s[0].id);
-  TEST_ASSERT_EQUAL_STRING("id7", c.s[7].id);
+  TEST_ASSERT_EQUAL_STRING("id23", c.s[23].id);
+}
+
+void test_agent_fields_parse() {
+  DeckClaude c;
+  const std::string s = sess("a", "working",
+                             ",\"project\":\"proj\",\"name\":\"Nova\",\"tool\":\"Bash\",\"agents\":3,"
+                             "\"since\":1795530000,\"hat\":7,\"tint\":2,\"live\":false");
+  const std::string b = "{\"sessions\":[" + s + "],\"usage\":{},\"prompt\":null,\"agents_total\":9}";
+  TEST_ASSERT_TRUE(parse(b, &c));
+  TEST_ASSERT_EQUAL_STRING("Nova", c.s[0].name);
+  TEST_ASSERT_EQUAL_STRING("Bash", c.s[0].tool);
+  TEST_ASSERT_EQUAL_UINT8(3, c.s[0].agents);
+  TEST_ASSERT_EQUAL_UINT32(1795530000u, c.s[0].since);
+  TEST_ASSERT_EQUAL_UINT8(7, c.s[0].hat);
+  TEST_ASSERT_EQUAL_UINT8(2, c.s[0].tint);
+  TEST_ASSERT_FALSE(c.s[0].live);
+  TEST_ASSERT_EQUAL_UINT8(9, c.agents_total);
+}
+
+void test_agents_clamp_255() {
+  DeckClaude c;
+  const std::string b = "{\"sessions\":[" + sess("a", "working", ",\"agents\":900") +
+                        "],\"usage\":{},\"prompt\":null,\"agents_total\":1000}";
+  TEST_ASSERT_TRUE(parse(b, &c));
+  TEST_ASSERT_EQUAL_UINT8(255, c.s[0].agents);
+  TEST_ASSERT_EQUAL_UINT8(255, c.agents_total);
+}
+
+void test_old_frame_defaults() {
+  DeckClaude c;
+  TEST_ASSERT_TRUE(parse(body(sess("a", "working", ",\"project\":\"proj\"")), &c));
+  TEST_ASSERT_EQUAL_STRING("proj", c.s[0].name);
+  TEST_ASSERT_EQUAL_UINT8(0, c.s[0].agents);
+  TEST_ASSERT_TRUE(c.s[0].live);
+  TEST_ASSERT_EQUAL_UINT32(0, c.s[0].since);
+  TEST_ASSERT_EQUAL_UINT8(0, c.agents_total);
+}
+
+void test_name_truncates_safely() {
+  DeckClaude c;
+  std::string thai;
+  for (int i = 0; i < 40 / 3; i++) thai += "\xE0\xB8\x81";
+  thai += "a";
+  TEST_ASSERT_EQUAL_UINT32(40, thai.size());
+  TEST_ASSERT_TRUE(parse(body(sess("a", "working", ",\"name\":\"" + thai + "\"")), &c));
+  const size_t n = strlen(c.s[0].name);
+  TEST_ASSERT_TRUE(n <= 23);
+  TEST_ASSERT_EQUAL_UINT32(21, n);
+  TEST_ASSERT_EQUAL_INT(0, memcmp(c.s[0].name, thai.c_str(), n));
+}
+
+void test_age_strings() {
+  char b[16];
+  TEST_ASSERT_EQUAL_UINT32(3, deck_claude_age(b, sizeof b, 1000, 1030));
+  TEST_ASSERT_EQUAL_STRING("now", b);
+  deck_claude_age(b, sizeof b, 1000, 1000 + 300);
+  TEST_ASSERT_EQUAL_STRING("5m ago", b);
+  deck_claude_age(b, sizeof b, 1000, 1000 + 3 * 3600);
+  TEST_ASSERT_EQUAL_STRING("3h ago", b);
+  deck_claude_age(b, sizeof b, 1000, 1000 + 2 * 86400);
+  TEST_ASSERT_EQUAL_STRING("2d ago", b);
+}
+
+void test_age_without_clock() {
+  char b[16] = "x";
+  TEST_ASSERT_EQUAL_UINT32(0, deck_claude_age(b, sizeof b, 1000, 0));
+  TEST_ASSERT_EQUAL_STRING("", b);
+  strcpy(b, "x");
+  TEST_ASSERT_EQUAL_UINT32(0, deck_claude_age(b, sizeof b, 1120, 1000));
+  TEST_ASSERT_EQUAL_STRING("", b);
+  strcpy(b, "x");
+  TEST_ASSERT_EQUAL_UINT32(0, deck_claude_age(b, sizeof b, 0, 1000));
+  TEST_ASSERT_EQUAL_STRING("", b);
 }
 
 void test_parse_truncates_utf8_safely() {
@@ -264,7 +337,13 @@ int main() {
   RUN_TEST(test_parse_c2);
   RUN_TEST(test_parse_rejects_and_keeps_out);
   RUN_TEST(test_parse_skips_bad_sessions);
-  RUN_TEST(test_parse_caps_sessions_at_8);
+  RUN_TEST(test_cap_24);
+  RUN_TEST(test_agent_fields_parse);
+  RUN_TEST(test_agents_clamp_255);
+  RUN_TEST(test_old_frame_defaults);
+  RUN_TEST(test_name_truncates_safely);
+  RUN_TEST(test_age_strings);
+  RUN_TEST(test_age_without_clock);
   RUN_TEST(test_parse_truncates_utf8_safely);
   RUN_TEST(test_parse_clamps_numbers);
   RUN_TEST(test_parse_prompt_requires_ids);
