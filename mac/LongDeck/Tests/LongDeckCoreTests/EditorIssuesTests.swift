@@ -67,6 +67,11 @@ import Testing
         #expect(messages(config([key("k", action: .openURL("https://github.com"))])).isEmpty)
     }
 
+    @Test func claudeAgentsNeedsTwoColumns() {
+        let agents = LiveWidgetConfig(id: "a", col: 0, row: 0, w: 1, h: 1, kind: .claudeAgents)
+        #expect(messages(config([], live: [agents])) == ["claude_agents needs at least 2 columns"])
+    }
+
     @Test func colourErrors() {
         #expect(messages(config([key("k", background: "#12345")])) == ["Background must be #RRGGBB"])
         #expect(messages(config([key("k", foreground: "red")])) == ["Text colour must be #RRGGBB"])

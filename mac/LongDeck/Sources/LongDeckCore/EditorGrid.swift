@@ -68,7 +68,7 @@ public enum EditorWidget: Equatable, Sendable {
     }
 
     public var minSize: CellSize {
-        if case .live(let l) = self, l.kind == .claudeSessions { return CellSize(w: 2, h: 1) }
+        if case .live(let l) = self, (l.kind == .claudeSessions || l.kind == .claudeAgents) { return CellSize(w: 2, h: 1) }
         return CellSize(w: 1, h: 1)
     }
 

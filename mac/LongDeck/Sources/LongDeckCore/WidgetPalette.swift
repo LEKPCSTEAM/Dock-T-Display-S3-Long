@@ -28,6 +28,7 @@ public enum LiveTitles {
         case .clock: return "Clock"
         case .claudeSessions: return "Claude sessions"
         case .claudeUsage: return "Claude usage"
+        case .claudeAgents: return "Claude agents"
         }
     }
 }
@@ -36,6 +37,7 @@ public enum PaletteItem: String, CaseIterable, Sendable {
     case key, stat, volume, clock
     case claudeSessions = "claude_sessions"
     case claudeUsage = "claude_usage"
+    case claudeAgents = "claude_agents"
 
     public var title: String {
         switch self {
@@ -45,6 +47,7 @@ public enum PaletteItem: String, CaseIterable, Sendable {
         case .clock: return "Clock"
         case .claudeSessions: return "Claude sessions"
         case .claudeUsage: return "Claude usage"
+        case .claudeAgents: return "Claude agents"
         }
     }
 
@@ -56,6 +59,7 @@ public enum PaletteItem: String, CaseIterable, Sendable {
         case .clock: return "clock"
         case .claudeSessions: return "list.bullet.rectangle"
         case .claudeUsage: return "gauge.with.dots.needle.33percent"
+        case .claudeAgents: return "person.3.sequence"
         }
     }
 
@@ -67,11 +71,12 @@ public enum PaletteItem: String, CaseIterable, Sendable {
         case .clock: return CellSize(w: 2, h: 1)
         case .claudeSessions: return CellSize(w: 4, h: 2)
         case .claudeUsage: return CellSize(w: 4, h: 1)
+        case .claudeAgents: return CellSize(w: 8, h: 2)
         }
     }
 
     public var minSize: CellSize {
-        self == .claudeSessions ? CellSize(w: 2, h: 1) : CellSize(w: 1, h: 1)
+        self == .claudeSessions || self == .claudeAgents ? CellSize(w: 2, h: 1) : CellSize(w: 1, h: 1)
     }
 
     public var idBase: String {
@@ -82,6 +87,7 @@ public enum PaletteItem: String, CaseIterable, Sendable {
         case .clock: return "clock"
         case .claudeSessions: return "ccsessions"
         case .claudeUsage: return "ccusage"
+        case .claudeAgents: return "ccagents"
         }
     }
 
@@ -99,6 +105,7 @@ public enum PaletteItem: String, CaseIterable, Sendable {
         case .clock: return live(.clock)
         case .claudeSessions: return live(.claudeSessions)
         case .claudeUsage: return live(.claudeUsage)
+        case .claudeAgents: return live(.claudeAgents)
         }
     }
 }

@@ -200,7 +200,7 @@ private func tempURL() -> URL {
             case .stat(let m, let s): metrics.insert(m); styles.insert(s)
             case .volume: volume = true
             case .clock: clock = true
-            case .claudeSessions, .claudeUsage: break
+            case .claudeSessions, .claudeUsage, .claudeAgents: break
             }
         }
         #expect(volume && clock)
@@ -220,6 +220,23 @@ private func tempURL() -> URL {
         #expect(usageJSON == #"{"col":4,"h":1,"id":"ccu","row":0,"type":"claude_usage","w":4}"#)
         #expect(try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(sessionsJSON.utf8)) == sessions)
         #expect(try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(usageJSON.utf8)) == usage)
+    }
+
+    @Test func claudeAgentsRoundTrips() throws {
+        let json = #"{"col":0,"h":2,"id":"cca","row":0,"type":"claude_agents","w":8}"#
+        let decoded = try JSONDecoder().decode(LiveWidgetConfig.self, from: Data(json.utf8))
+        #expect(decoded == LiveWidgetConfig(id: "cca", col: 0, row: 0, w: 8, h: 2, kind: .claudeAgents))
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        #expect(String(decoding: try encoder.encode(decoded), as: UTF8.self) == json)
+    }
+
+    @Test func claudeAgentsNeedsTwoColumns() throws {
+        let narrow = DeckConfig(version: 1, pages: [PageConfig(
+            name: "C", keys: [], live: [LiveWidgetConfig(id: "c", col: 0, row: 0, w: 1, h: 1, kind: .claudeAgents)])])
+        #expect(throws: DeckConfigError.invalid("widget c: claude_agents needs at least 2 columns")) {
+            try narrow.validate()
+        }
     }
 
     @Test func claudeSessionsNeedsTwoColumns() throws {

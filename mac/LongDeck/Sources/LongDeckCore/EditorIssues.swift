@@ -78,6 +78,9 @@ public enum EditorIssues {
                     if l.kind == .claudeSessions && l.w < 2 {
                         error(id, "Claude sessions needs at least 2 columns")
                     }
+                    if l.kind == .claudeAgents && l.w < 2 {
+                        error(id, "claude_agents needs at least 2 columns")
+                    }
                 case .key(let k):
                     out += keyIssues(k, page: index, env: env)
                 }

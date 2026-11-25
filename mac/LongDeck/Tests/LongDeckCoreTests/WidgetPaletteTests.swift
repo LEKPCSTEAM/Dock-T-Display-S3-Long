@@ -13,6 +13,8 @@ import Testing
              CellSize(w: 4, h: 2), CellSize(w: 2, h: 1), "ccsessions"),
             (.claudeUsage, "Claude usage", "gauge.with.dots.needle.33percent",
              CellSize(w: 4, h: 1), CellSize(w: 1, h: 1), "ccusage"),
+            (.claudeAgents, "Claude agents", "person.3.sequence",
+             CellSize(w: 8, h: 2), CellSize(w: 2, h: 1), "ccagents"),
         ]
         #expect(PaletteItem.allCases.count == rows.count)
         for (item, title, symbol, def, min, base) in rows {
@@ -23,6 +25,14 @@ import Testing
             #expect(item.idBase == base)
         }
         #expect(PaletteItem.claudeSessions.rawValue == "claude_sessions")
+        #expect(PaletteItem.claudeAgents.rawValue == "claude_agents")
+    }
+
+    @Test func claudeAgentsDefaults() {
+        let rect = CellRect(col: 0, row: 0, w: 8, h: 2)
+        #expect(PaletteItem.claudeAgents.makeWidget(id: "a", rect: rect)
+            == .live(LiveWidgetConfig(id: "a", col: 0, row: 0, w: 8, h: 2, kind: .claudeAgents)))
+        #expect(LiveTitles.title(.claudeAgents) == "Claude agents")
     }
 
     @Test func paletteSymbolsExist() {

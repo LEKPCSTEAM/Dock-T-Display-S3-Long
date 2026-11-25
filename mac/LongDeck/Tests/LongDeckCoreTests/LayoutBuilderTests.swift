@@ -76,6 +76,15 @@ func liveConfig() -> DeckConfig {
         #expect(built.faces.isEmpty)
     }
 
+    @Test func layoutWritesClaudeAgentsType() {
+        let config = DeckConfig(version: 1, pages: [PageConfig(name: "Agents", keys: [], live: [
+            LiveWidgetConfig(id: "cca", col: 0, row: 0, w: 8, h: 2, kind: .claudeAgents),
+        ])])
+        let built = LayoutBuilder.build(config, render: stubRender)
+        #expect(built.json.contains(#""type":"claude_agents""#))
+        #expect(built.faces.isEmpty)
+    }
+
     @Test func layoutHashUnchangedForSample() {
         #expect(LayoutBuilder.build(SampleConfig.dev, render: stubRender).hash == "dd144a678155aef2")
     }

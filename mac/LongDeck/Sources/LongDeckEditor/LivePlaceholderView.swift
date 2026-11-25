@@ -76,6 +76,11 @@ struct LivePlaceholderView: View {
                 usageRow("7d", 0.3)
             }
             .frame(maxHeight: .infinity)
+        case .claudeAgents:
+            Text("Claude agents")
+                .font(.system(size: 14 * scale, weight: .semibold))
+                .foregroundColor(BoardColors.text)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
